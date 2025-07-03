@@ -1,0 +1,140 @@
+# Frontend (Next.js) Dependencies
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/dist/
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/package-lock.json
+
+# Frontend Environment variables
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Frontend TypeScript cache
+frontend/*.tsbuildinfo
+frontend/.eslintcache
+
+# Backend (Django) Dependencies
+backend/venv/
+backend/env/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/*.pyd
+backend/.Python
+
+# Django specific
+backend/db.sqlite3
+backend/db.sqlite3-journal
+backend/media/
+backend/staticfiles/
+backend/logs/
+backend/*.log
+
+# Django Environment variables
+backend/.env
+backend/.env.local
+backend/.env.production
+
+# Django migrations (optional - you might want to keep these)
+# backend/*/migrations/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+
+# API keys and sensitive data
+*.key
+*.pem
+config.json
+api-keys.json
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+
+# Python cache
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Django static files
+staticfiles/
+static/
+
+# Django media files
+media/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Documentation builds
+docs/_build/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Test files
+.coverage
+.pytest_cache/
+.tox/
+htmlcov/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/ 

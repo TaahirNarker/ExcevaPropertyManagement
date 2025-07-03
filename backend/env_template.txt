@@ -1,0 +1,27 @@
+# Environment Configuration Template for Property Control System
+# Copy this file to .env and fill in your actual values
+
+# Django Configuration
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
+
+# Supabase Database Configuration - Cloud Only
+DB_NAME=postgres
+DB_USER=postgres.your-project-ref
+DB_PASSWORD=your-database-password
+DB_HOST=aws-0-region.pooler.supabase.com
+DB_PORT=5432
+
+# Supabase API Configuration
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_KEY=your-anon-public-key
+SUPABASE_SERVICE_KEY=your-service-role-key
+
+# Security Settings
+SECURE_SSL_REDIRECT=False
+
+# Production Settings (uncomment for production)
+# DEBUG=False
+# ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+# SECURE_SSL_REDIRECT=True 
