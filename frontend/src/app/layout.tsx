@@ -14,21 +14,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "JARVIS - AI-Powered Property Analysis",
-  description: "Revolutionising dealmaking with cutting-edge property analysis and AI-powered market insights. The future of real estate intelligence.",
-  keywords: "property analysis, real estate AI, JARVIS, property valuation, market analysis, real estate technology",
+  title: "Exceva Property Management System",
+  description: "Complete property portfolio management solution for landlords, property managers, and real estate professionals. Manage properties, tenants, leases, and finances all in one place.",
+  keywords: "property management, real estate, portfolio management, tenant management, lease management, property finance, rental management",
   authors: [{ name: "Exceva Property" }],
   creator: "Exceva Property",
   publisher: "Exceva Property",
   openGraph: {
-    title: "JARVIS - AI-Powered Property Analysis",
-    description: "Revolutionising dealmaking with cutting-edge property analysis and AI-powered market insights.",
+    title: "Exceva Property Management System",
+    description: "Complete property portfolio management solution for landlords, property managers, and real estate professionals.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "JARVIS - AI-Powered Property Analysis",
-    description: "Revolutionising dealmaking with cutting-edge property analysis and AI-powered market insights.",
+    title: "Exceva Property Management System",
+    description: "Complete property portfolio management solution for landlords, property managers, and real estate professionals.",
   },
   viewport: "width=device-width, initial-scale=1",
   robots: "index, follow",

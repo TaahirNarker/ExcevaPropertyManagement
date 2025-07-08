@@ -39,7 +39,7 @@ export default function Layout({ children, isHomePage = false }: LayoutProps) {
               </Link>
             </div>
             
-            {/* Center: JARVIS - big and centered - hidden on homepage */}
+            {/* Center: System name - hidden on homepage */}
             {!isHomePage && (
               <div className="w-2/4 flex justify-center items-center">
                 <div className={`px-6 py-2 rounded-md border shadow-lg ${
@@ -47,10 +47,8 @@ export default function Layout({ children, isHomePage = false }: LayoutProps) {
                     ? 'bg-gray-800/50 border-gray-700'
                     : 'bg-white/50 border-gray-300'
                 }`}>
-                  <h2 className="text-2xl md:text-3xl font-mono tracking-widest font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent flex items-center">
-                    <span className="mr-3 h-2 w-2 rounded-full bg-blue-400 animate-pulse"></span>
-                    J A R V I S
-                    <span className="ml-3 h-2 w-2 rounded-full bg-purple-500 animate-pulse"></span>
+                  <h2 className="text-lg md:text-xl font-semibold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                    Property Management System
                   </h2>
                 </div>
               </div>

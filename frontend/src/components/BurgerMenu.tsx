@@ -22,31 +22,6 @@ type MenuSection = {
 
 const menuItems: MenuSection[] = [
   {
-    title: 'Property Analysis',
-    subItems: [
-      {
-        title: 'Stage 1',
-        subItems: [
-          { title: 'Web Scraper', href: '/stage1/webscraper' },
-          { title: 'PDF Parser', href: '/stage1/pdfparser' },
-          { title: 'AI Agent', href: '/stage1/aiagent' },
-        ],
-      },
-      {
-        title: 'Stage 2',
-        subItems: [
-          { title: 'Property Analyser', href: '/stage2/propanalysis' },
-        ],
-      },
-      {
-        title: 'Stage 3',
-        subItems: [
-          { title: 'Coming Soon', href: '/stage3' },
-        ],
-      },
-    ],
-  },
-  {
     title: 'Property Management',
     subItems: [
       { title: 'Dashboard', href: '/property-management' },
@@ -60,7 +35,7 @@ const menuItems: MenuSection[] = [
   {
     title: 'Settings',
     subItems: [
-      { title: 'Application Settings', href: '/stage3/settings' },
+      { title: 'Application Settings', href: '/settings' },
     ],
   },
 ];
@@ -146,7 +121,7 @@ export default function BurgerMenu() {
                           {section.subItems.map((item, itemIndex) => (
                             <div key={itemIndex} className="space-y-2">
                               {hasSubItems(item) ? (
-                                // Stage with sub-items (for Property Analysis stages)
+                                // Stage with sub-items (no longer used but keeping for potential future features)
                                 <>
                                   <button
                                     onClick={() => setActiveStage(activeStage === itemIndex ? null : itemIndex)}
