@@ -6,8 +6,6 @@ const nextConfig = {
       allowedOrigins: ['propman.exceva.capital', 'localhost:3000', 'localhost:3001']
     }
   },
-  // Ensure static files are properly handled
-  assetPrefix: process.env.NODE_ENV === 'production' ? 'https://propman.exceva.capital' : '',
   // Disable image optimization in production as we'll handle it via nginx
   images: {
     unoptimized: process.env.NODE_ENV === 'production',
@@ -18,7 +16,12 @@ const nextConfig = {
   },
   eslint: {
     ignoreDuringBuilds: true
-  }
+  },
+  // Configure static file handling
+  distDir: '.next',
+  poweredByHeader: false,
+  generateEtags: false,
+  compress: true
 };
 
 export default nextConfig;
