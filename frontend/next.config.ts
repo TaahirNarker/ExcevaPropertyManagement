@@ -1,17 +1,14 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'standalone',
   experimental: {
-    serverActions: {
-      bodySizeLimit: '100mb' // Increased to 100MB to handle large PDF files
-    }
+    serverActions: true,
+  },
+  // Ensure static files are properly handled
+  assetPrefix: process.env.NODE_ENV === 'production' ? 'https://propman.exceva.capital' : '',
+  // Disable image optimization in production as we'll handle it via nginx
+  images: {
+    unoptimized: process.env.NODE_ENV === 'production',
   }
 };
 
