@@ -8,11 +8,18 @@ import Cookies from 'js-cookie';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 
 // API Base URL - updated for production deployment
-const API_BASE_URL = 'https://propman.exceva.capital/api';
+const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://propman.exceva.capital/api'
+  : 'http://127.0.0.1:8000/api';
 
 // WebAuthn Configuration
-const WEBAUTHN_ORIGIN = 'https://propman.exceva.capital';
-const WEBAUTHN_RP_ID = 'propman.exceva.capital';
+const WEBAUTHN_ORIGIN = process.env.NODE_ENV === 'production'
+  ? 'https://propman.exceva.capital'
+  : 'http://localhost:3000';
+
+const WEBAUTHN_RP_ID = process.env.NODE_ENV === 'production'
+  ? 'propman.exceva.capital'
+  : 'localhost';
 
 // Token storage keys
 const ACCESS_TOKEN_KEY = 'access_token';

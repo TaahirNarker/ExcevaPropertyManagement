@@ -220,9 +220,9 @@ SIMPLE_JWT = {
 }
 
 # WebAuthn Configuration
-WEBAUTHN_RP_ID = 'propman.exceva.capital'
-WEBAUTHN_RP_NAME = 'Property Management System'
-WEBAUTHN_ORIGIN = ['https://propman.exceva.capital']
+WEBAUTHN_RP_ID = config('WEBAUTHN_RP_ID', default='propman.exceva.capital')
+WEBAUTHN_RP_NAME = config('WEBAUTHN_RP_NAME', default='Property Management System')
+WEBAUTHN_ORIGIN = config('WEBAUTHN_ORIGIN', default=['https://propman.exceva.capital'])
 
 # CORS Configuration - Updated for production
 CORS_ALLOWED_ORIGINS = [
