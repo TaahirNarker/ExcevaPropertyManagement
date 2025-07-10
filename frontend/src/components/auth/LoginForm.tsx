@@ -13,7 +13,9 @@ import {
   EyeIcon, 
   EyeSlashIcon,
   FaceSmileIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
+  ShieldCheckIcon,
+  InformationCircleIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import { LoginCredentials } from '@/lib/auth';
@@ -30,6 +32,7 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isPasskeyLogin, setIsPasskeyLogin] = useState(false);
   const [passkeyEmail, setPasskeyEmail] = useState('');
+  const [isProcessingPasskey, setIsProcessingPasskey] = useState(false);
 
   const {
     register,
@@ -44,6 +47,7 @@ export default function LoginForm() {
       await login(data);
     } catch (error) {
       console.error('Login failed:', error);
+      toast.error('Login failed. Please check your credentials.');
     }
   }, [login]);
 
@@ -54,12 +58,22 @@ export default function LoginForm() {
       return;
     }
 
+    if (!isPasskeySupported) {
+      toast.error('Passkeys are not supported on this device');
+      return;
+    }
+
     try {
+      setIsProcessingPasskey(true);
       await loginWithPasskey(passkeyEmail);
+      toast.success('Successfully logged in with passkey!');
     } catch (error) {
       console.error('Passkey login failed:', error);
+      toast.error('Passkey login failed. Please try again or use password login.');
+    } finally {
+      setIsProcessingPasskey(false);
     }
-  }, [passkeyEmail, loginWithPasskey]);
+  }, [passkeyEmail, loginWithPasskey, isPasskeySupported]);
 
   // Switch between login methods
   const switchToPasskey = useCallback(() => {
@@ -88,24 +102,26 @@ export default function LoginForm() {
         <button
           type="button"
           onClick={switchToPassword}
-          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors duration-200 ${
+          className={`flex-1 py-3 px-4 rounded-md text-sm font-medium transition-colors duration-200 flex items-center justify-center space-x-2 ${
             !isPasskeyLogin
               ? 'bg-white/20 text-white shadow-sm'
               : 'text-gray-300 hover:text-white hover:bg-white/5'
           }`}
         >
-          Password
+          <LockClosedIcon className="h-4 w-4" />
+          <span>Password</span>
         </button>
         <button
           type="button"
           onClick={switchToPasskey}
-          className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors duration-200 ${
+          className={`flex-1 py-3 px-4 rounded-md text-sm font-medium transition-colors duration-200 flex items-center justify-center space-x-2 ${
             isPasskeyLogin
               ? 'bg-white/20 text-white shadow-sm'
               : 'text-gray-300 hover:text-white hover:bg-white/5'
           }`}
         >
-          Passkey
+          <ShieldCheckIcon className="h-4 w-4" />
+          <span>Passkey</span>
         </button>
       </div>
     );
@@ -123,8 +139,25 @@ export default function LoginForm() {
         {/* Login Method Toggle */}
         {loginMethodToggle}
 
+        {/* Passkey Support Notice */}
+        {!isPasskeySupported && (
+          <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <InformationCircleIcon className="h-5 w-5 text-yellow-400" />
+              <div>
+                <p className="text-sm text-yellow-300">
+                  Passkeys are not supported on this device or browser.
+                </p>
+                <p className="text-xs text-yellow-400 mt-1">
+                  Please use password login or try a supported browser.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Login Forms */}
-        <div className="transition-opacity duration-300">
+        <div className="transition-all duration-300 ease-in-out">
           {isPasskeyLogin ? (
             // Passkey Login Form
             <div className="space-y-6">
@@ -148,11 +181,14 @@ export default function LoginForm() {
               <button
                 type="button"
                 onClick={handlePasskeyLogin}
-                disabled={loading || !passkeyEmail}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                disabled={loading || isProcessingPasskey || !passkeyEmail || !isPasskeySupported}
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
               >
-                {loading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                {loading || isProcessingPasskey ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <span>Authenticating...</span>
+                  </>
                 ) : (
                   <>
                     <FaceSmileIcon className="h-5 w-5" />
@@ -162,9 +198,16 @@ export default function LoginForm() {
               </button>
 
               <div className="text-center">
-                <p className="text-sm text-gray-400">
-                  Use your device's biometric authentication or security key
-                </p>
+                <div className="bg-blue-50/10 border border-blue-500/20 rounded-lg p-4">
+                  <div className="flex items-center justify-center space-x-2 text-blue-300 mb-2">
+                    <ShieldCheckIcon className="h-5 w-5" />
+                    <span className="font-medium">Secure Authentication</span>
+                  </div>
+                  <p className="text-sm text-blue-200">
+                    Use your device's biometric authentication (Face ID, Touch ID, Windows Hello) 
+                    or security key for secure, passwordless login.
+                  </p>
+                </div>
               </div>
             </div>
           ) : (
@@ -232,10 +275,13 @@ export default function LoginForm() {
               <button
                 type="submit"
                 disabled={isSubmitting || loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
               >
                 {isSubmitting || loading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <span>Signing in...</span>
+                  </>
                 ) : (
                   <>
                     <span>Sign In</span>
@@ -243,6 +289,21 @@ export default function LoginForm() {
                   </>
                 )}
               </button>
+
+              {/* Passkey Quick Access */}
+              {isPasskeySupported && (
+                <div className="text-center">
+                  <p className="text-sm text-gray-400 mb-2">or</p>
+                  <button
+                    type="button"
+                    onClick={switchToPasskey}
+                    className="text-blue-400 hover:text-blue-300 text-sm font-medium transition-colors flex items-center justify-center space-x-1 mx-auto"
+                  >
+                    <ShieldCheckIcon className="h-4 w-4" />
+                    <span>Use Face ID / Touch ID</span>
+                  </button>
+                </div>
+              )}
             </form>
           )}
         </div>

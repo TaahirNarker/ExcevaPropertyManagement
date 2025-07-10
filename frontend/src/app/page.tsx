@@ -54,7 +54,7 @@ export default function HomePage() {
         >
           <h1 className="text-4xl font-bold text-white mb-4">Welcome to Property Management</h1>
           <p className="text-gray-300 mb-8">Professional property portfolio management</p>
-          <div className="animate-pulse">
+          <div className="bg-gray-100 dark:bg-gray-800">
             <div className="h-2 bg-blue-600 rounded-full w-64 mx-auto"></div>
           </div>
         </motion.div>

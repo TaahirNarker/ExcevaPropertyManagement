@@ -19,10 +19,10 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
     TokenVerifyView,
 )
+from users.views import CustomTokenObtainPairView
 
 # Admin site customization
 admin.site.site_header = "Property Control System"
@@ -34,7 +34,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     
     # Authentication endpoints
-    path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/auth/verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('api/auth/', include('users.urls')),

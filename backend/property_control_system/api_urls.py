@@ -66,10 +66,10 @@ urlpatterns = [
     # User management endpoints
     path('users/', list_users, name='list-users'),
     
-    # Placeholder endpoints for frontend development
-    path('properties/', placeholder_list_view, name='properties-list'),
-    path('properties/<str:pk>/', placeholder_detail_view, name='properties-detail'),
+    # Properties management endpoints
+    path('properties/', include('properties.urls')),
     
+    # Placeholder endpoints for frontend development
     path('tenants/', placeholder_list_view, name='tenants-list'),
     path('tenants/<str:pk>/', placeholder_detail_view, name='tenants-detail'),
     

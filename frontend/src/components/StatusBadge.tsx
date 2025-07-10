@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { 
   ExclamationTriangleIcon,
   ClockIcon,
@@ -64,63 +63,29 @@ const StatusBadge: React.FC<StatusBadgeProps> = ({
     }
   };
 
-  // Animation variants based on urgency
-  const getAnimationVariants = () => {
-    if (urgency === 'high') {
-      return {
-        initial: { scale: 1 },
-        animate: { 
-          scale: [1, 1.05, 1],
-          transition: { 
-            duration: 2, 
-            repeat: Infinity,
-            repeatType: 'loop' as const
-          }
-        }
-      };
-    }
-    return {
-      initial: { scale: 1 },
-      animate: { scale: 1 }
-    };
-  };
-
   // Get appropriate color class
   const getColorClass = () => {
     return colorClasses[color as keyof typeof colorClasses] || colorClasses.gray;
   };
 
   return (
-    <motion.span
-      variants={getAnimationVariants()}
-      initial="initial"
-      animate="animate"
+    <span
       className={`
         inline-flex items-center gap-1.5 font-medium rounded-full border
         ${sizeClasses[size]}
         ${getColorClass()}
+        ${urgency === 'high' ? 'ring-2 ring-red-500/20' : ''}
         ${className}
       `}
     >
       {showIcon && getIcon()}
       <span className="whitespace-nowrap">{status}</span>
       
-      {/* Urgency indicator dot */}
+      {/* Urgency indicator dot - static styling for performance */}
       {urgency === 'high' && (
-        <motion.div
-          animate={{ 
-            opacity: [1, 0.3, 1],
-            scale: [1, 1.2, 1]
-          }}
-          transition={{ 
-            duration: 1.5, 
-            repeat: Infinity,
-            repeatType: 'loop'
-          }}
-          className="w-2 h-2 bg-current rounded-full"
-        />
+        <div className="w-2 h-2 bg-current rounded-full opacity-80" />
       )}
-    </motion.span>
+    </span>
   );
 };
 

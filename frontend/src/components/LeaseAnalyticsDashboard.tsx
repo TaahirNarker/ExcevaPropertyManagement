@@ -110,7 +110,7 @@ const LeaseAnalyticsDashboard: React.FC = () => {
   if (isLoading || !analytics) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-        <div className="animate-pulse">
+        <div className="bg-gray-100 dark:bg-gray-800">
           <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/4 mb-6"></div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
             {[1, 2, 3, 4].map(i => (

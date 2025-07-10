@@ -229,11 +229,13 @@ class AuthService {
   // Register a new passkey
   async registerPasskey(): Promise<boolean> {
     try {
+      console.log('🔐 Starting passkey registration...');
       const accessToken = this.getAccessToken();
       if (!accessToken) {
         throw new Error('User must be logged in to register passkey');
       }
 
+      console.log('🔐 Beginning passkey registration...');
       // Start registration
       const beginResponse = await fetch(`${this.baseUrl}/auth/webauthn/register/begin/`, {
         method: 'POST',
@@ -243,16 +245,29 @@ class AuthService {
         },
       });
 
+      console.log('🔐 Begin response status:', beginResponse.status);
+
       if (!beginResponse.ok) {
-        throw new Error('Failed to begin passkey registration');
+        const errorData = await beginResponse.json().catch(() => null);
+        const errorMessage = errorData?.error || 'Failed to begin passkey registration';
+        console.error('🔐 Begin request failed:', errorMessage);
+        throw new Error(errorMessage);
       }
 
       const { options } = await beginResponse.json();
+      console.log('🔐 Registration options received:', options);
+
+      // Import the WebAuthn client library
+      const { startRegistration } = await import('@simplewebauthn/browser');
+      console.log('🔐 SimpleWebAuthn library imported');
 
       // Start WebAuthn registration
+      console.log('🔐 Starting WebAuthn registration with browser...');
       const attResp = await startRegistration(options);
+      console.log('🔐 WebAuthn registration completed:', attResp);
 
       // Complete registration
+      console.log('🔐 Completing registration with server...');
       const completeResponse = await fetch(`${this.baseUrl}/auth/webauthn/register/complete/`, {
         method: 'POST',
         headers: {
@@ -262,11 +277,17 @@ class AuthService {
         body: JSON.stringify({ credential: attResp }),
       });
 
+      console.log('🔐 Complete response status:', completeResponse.status);
+
       if (!completeResponse.ok) {
-        throw new Error('Failed to complete passkey registration');
+        const errorData = await completeResponse.json().catch(() => null);
+        const errorMessage = errorData?.error || 'Failed to complete passkey registration';
+        console.error('🔐 Complete request failed:', errorMessage);
+        throw new Error(errorMessage);
       }
 
       const result = await completeResponse.json();
+      console.log('🔐 Registration result:', result);
       
       // Update user data to reflect passkey registration
       const user = this.getUser();
@@ -275,9 +296,10 @@ class AuthService {
         this.setUser(user);
       }
 
+      console.log('🔐 Passkey registration successful!');
       return result.verified;
     } catch (error) {
-      console.error('Passkey registration failed:', error);
+      console.error('🔐 Passkey registration failed:', error);
       throw error;
     }
   }
@@ -304,14 +326,14 @@ class AuthService {
       // Start WebAuthn authentication
       const authResp = await startAuthentication(options);
 
-      // Complete authentication
-      const completeResponse = await fetch(`${this.baseUrl}/auth/webauthn/login/complete/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ credential: authResp }),
-      });
+          // Complete authentication
+    const completeResponse = await fetch(`${this.baseUrl}/auth/webauthn/login/complete/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ credential: authResp, email: email }),
+    });
 
       if (!completeResponse.ok) {
         const error = await completeResponse.json();

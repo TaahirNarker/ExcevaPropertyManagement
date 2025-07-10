@@ -230,7 +230,7 @@ const LeaseForm = ({
                 <select
                   value={formData.tenant_id}
                   onChange={(e) => handleChange('tenant_id', e.target.value ? Number(e.target.value) : '')}
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     errors.tenant_id ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                   }`}
                   disabled={!!preselectedTenantId}
@@ -254,7 +254,7 @@ const LeaseForm = ({
                 <select
                   value={formData.unit_id}
                   onChange={(e) => handleChange('unit_id', e.target.value ? Number(e.target.value) : '')}
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     errors.unit_id ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                   }`}
                   disabled={!!preselectedUnitId}
@@ -286,7 +286,7 @@ const LeaseForm = ({
                   type="date"
                   value={formData.start_date}
                   onChange={(e) => handleChange('start_date', e.target.value)}
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     errors.start_date ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                   }`}
                 />
@@ -303,7 +303,7 @@ const LeaseForm = ({
                   type="date"
                   value={formData.end_date}
                   onChange={(e) => handleChange('end_date', e.target.value)}
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     errors.end_date ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                   }`}
                 />
@@ -326,7 +326,7 @@ const LeaseForm = ({
                     type="number"
                     value={formData.monthly_rent || ''}
                     onChange={(e) => handleChange('monthly_rent', Number(e.target.value))}
-                    className={`w-full pl-8 pr-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                    className={`w-full pl-8 pr-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       errors.monthly_rent ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                     }`}
                     placeholder="0"
@@ -351,7 +351,7 @@ const LeaseForm = ({
                     type="number"
                     value={formData.deposit_amount || ''}
                     onChange={(e) => handleChange('deposit_amount', Number(e.target.value))}
-                    className={`w-full pl-8 pr-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                    className={`w-full pl-8 pr-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       errors.deposit_amount ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                     }`}
                     placeholder="0"
@@ -375,7 +375,7 @@ const LeaseForm = ({
               <select
                 value={formData.status}
                 onChange={(e) => handleChange('status', e.target.value as any)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
               >
                 <option value="pending">Pending</option>
                 <option value="active">Active</option>

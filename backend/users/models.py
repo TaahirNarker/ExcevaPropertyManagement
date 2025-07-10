@@ -13,6 +13,7 @@ class CustomUser(AbstractUser):
     
     # WebAuthn/Passkeys support
     webauthn_credentials = models.TextField(blank=True, null=True, help_text="JSON data for WebAuthn credentials")
+    webauthn_challenge = models.CharField(max_length=500, blank=True, null=True, help_text="Temporary challenge for WebAuthn registration/login")
     
     # Make email required and unique
     email = models.EmailField(unique=True, blank=False, null=False)

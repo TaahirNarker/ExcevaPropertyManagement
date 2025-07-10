@@ -151,7 +151,7 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
-        <div className="animate-pulse">
+        <div className="bg-gray-100 dark:bg-gray-800">
           <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-4"></div>
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
@@ -341,7 +341,7 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({
                       onChange={(e) => handleUpdateNotifications({ whatsapp_enabled: e.target.checked })}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-colors dark:border-gray-600 peer-checked:bg-blue-600"></div>
                   </label>
                 </div>
 
@@ -357,7 +357,7 @@ const PaymentTracker: React.FC<PaymentTrackerProps> = ({
                       onChange={(e) => handleUpdateNotifications({ email_enabled: e.target.checked })}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-colors dark:border-gray-600 peer-checked:bg-blue-600"></div>
                   </label>
                 </div>
               </div>

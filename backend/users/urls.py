@@ -14,6 +14,7 @@ urlpatterns = [
     path('logout/', views.LogoutView.as_view(), name='logout'),
     
     # WebAuthn/Passkeys endpoints
+    path('webauthn/test/', views.WebAuthnTestView.as_view(), name='webauthn_test'),
     path('webauthn/register/begin/', views.WebAuthnRegisterBeginView.as_view(), name='webauthn_register_begin'),
     path('webauthn/register/complete/', views.WebAuthnRegisterCompleteView.as_view(), name='webauthn_register_complete'),
     path('webauthn/login/begin/', views.WebAuthnLoginBeginView.as_view(), name='webauthn_login_begin'),

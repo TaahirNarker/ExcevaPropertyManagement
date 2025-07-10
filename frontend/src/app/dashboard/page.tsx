@@ -1,215 +1,267 @@
 /**
- * Dashboard Page
- * Protected route that shows user profile and property management options
+ * Dashboard Page - Property Management System
+ * Main dashboard showing comprehensive property portfolio management
  */
 
 'use client';
 
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import { 
-  UserIcon, 
   BuildingOfficeIcon, 
-  HomeIcon,
-  ArrowRightOnRectangleIcon,
-  FaceSmileIcon,
-  ShieldCheckIcon
+  UserGroupIcon,
+  CurrencyDollarIcon,
+  ChartBarIcon,
+  PlusIcon,
+  DocumentTextIcon,
+  BanknotesIcon,
+  ClipboardDocumentListIcon,
+  PresentationChartLineIcon,
+  FolderIcon,
+  WrenchScrewdriverIcon,
+  TruckIcon,
+  Cog6ToothIcon,
+  BuildingOffice2Icon,
+  ShieldCheckIcon,
+  FaceSmileIcon
 } from '@heroicons/react/24/outline';
 import { useAuth, withAuth } from '@/contexts/AuthContext';
-import FluidBackground from '@/components/FluidBackground';
+import DashboardLayout from '@/components/DashboardLayout';
+
+// Mock data - in production, this would come from your API
+const mockDashboardData = {
+  portfolioValue: 2400000,
+  occupancyRate: 92,
+  activeTenants: 28,
+  monthlyIncome: 45000,
+  properties: 12,
+  activeLeases: 24,
+  totalValue: 2400000
+};
 
 function DashboardPage() {
-  const { user, logout, registerPasskey, isPasskeySupported } = useAuth();
+  const { user } = useAuth();
+  const [dashboardData, setDashboardData] = useState(mockDashboardData);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleRegisterPasskey = async () => {
-    try {
-      await registerPasskey();
-    } catch (error) {
-      console.error('Failed to register passkey:', error);
-    }
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-ZA', {
+      style: 'currency',
+      currency: 'ZAR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount).replace('ZAR', 'R');
+  };
+
+  // Format percentage
+  const formatPercentage = (value: number) => {
+    return `${value}%`;
+  };
+
+  // Format number with commas
+  const formatNumber = (num: number) => {
+    return num.toLocaleString();
   };
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 overflow-hidden">
-      {/* Background */}
-      <FluidBackground />
-      
-      {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 py-12">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-12">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8 }}
-          >
-            <h1 className="text-4xl font-bold text-white">Dashboard</h1>
-            <p className="text-gray-300 mt-2">Welcome back, {user?.full_name}!</p>
-          </motion.div>
-          
-          <motion.button
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8 }}
-            onClick={logout}
-            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors"
-          >
-            <ArrowRightOnRectangleIcon className="h-5 w-5" />
-            <span>Logout</span>
-          </motion.button>
+    <DashboardLayout
+      title="Property Management System"
+      subtitle="Complete property portfolio management solution for landlords, property managers, and real estate professionals"
+    >
+      <div className="p-6">
+        {/* Key Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-300 text-sm">Portfolio Value</p>
+                <p className="text-3xl font-bold text-white">{formatCurrency(dashboardData.portfolioValue)}</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center">
+                <BanknotesIcon className="h-6 w-6 text-blue-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-300 text-sm">Occupancy Rate</p>
+                <p className="text-3xl font-bold text-white">{formatPercentage(dashboardData.occupancyRate)}</p>
+              </div>
+              <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center">
+                <ChartBarIcon className="h-6 w-6 text-green-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-300 text-sm">Active Tenants</p>
+                <p className="text-3xl font-bold text-white">{formatNumber(dashboardData.activeTenants)}</p>
+              </div>
+              <div className="w-12 h-12 bg-purple-500/20 rounded-full flex items-center justify-center">
+                <UserGroupIcon className="h-6 w-6 text-purple-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-300 text-sm">Monthly Income</p>
+                <p className="text-3xl font-bold text-white">{formatCurrency(dashboardData.monthlyIncome)}</p>
+              </div>
+              <div className="w-12 h-12 bg-yellow-500/20 rounded-full flex items-center justify-center">
+                <CurrencyDollarIcon className="h-6 w-6 text-yellow-400" />
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* User Profile Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20 mb-8"
-        >
-          <div className="flex items-center space-x-6 mb-6">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-              <UserIcon className="h-10 w-10 text-white" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-white">{user?.full_name}</h2>
-              <p className="text-gray-300">{user?.email}</p>
-              <div className="flex items-center space-x-4 mt-2">
-                {user?.is_landlord && (
-                  <span className="bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full text-sm flex items-center space-x-1">
-                    <BuildingOfficeIcon className="h-4 w-4" />
-                    <span>Landlord</span>
-                  </span>
-                )}
-                {user?.is_tenant && (
-                  <span className="bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-sm flex items-center space-x-1">
-                    <HomeIcon className="h-4 w-4" />
-                    <span>Tenant</span>
-                  </span>
-                )}
+        {/* Management Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
+                  <BuildingOfficeIcon className="h-5 w-5 text-blue-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Properties</h3>
+                  <p className="text-gray-300 text-sm">Manage your property portfolio</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-white">{formatNumber(dashboardData.properties)}</p>
+                <p className="text-gray-300 text-sm">Properties</p>
               </div>
             </div>
+            <p className="text-gray-400 text-sm mb-4">Manage your property portfolio and individual units</p>
           </div>
 
-          {/* User Details */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-4">Account Information</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm text-gray-400">Email</label>
-                  <p className="text-white">{user?.email}</p>
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+                  <ClipboardDocumentListIcon className="h-5 w-5 text-green-400" />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-400">Phone</label>
-                  <p className="text-white">{user?.phone_number || 'Not provided'}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-400">Member Since</label>
-                  <p className="text-white">
-                    {user?.date_joined ? new Date(user.date_joined).toLocaleDateString() : 'N/A'}
-                  </p>
+                  <h3 className="text-lg font-semibold text-white">Leases</h3>
+                  <p className="text-gray-300 text-sm">Manage tenant lease agreements</p>
                 </div>
               </div>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-4">Security</h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-white">Passkey Authentication</p>
-                    <p className="text-sm text-gray-400">
-                      {user?.has_passkey ? 'Enabled' : 'Not set up'}
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {user?.has_passkey ? (
-                      <ShieldCheckIcon className="h-5 w-5 text-green-400" />
-                    ) : (
-                      <FaceSmileIcon className="h-5 w-5 text-gray-400" />
-                    )}
-                  </div>
-                </div>
-                
-                {isPasskeySupported && !user?.has_passkey && (
-                  <button
-                    onClick={handleRegisterPasskey}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors flex items-center space-x-2"
-                  >
-                    <FaceSmileIcon className="h-4 w-4" />
-                    <span>Set up Face ID / Touch ID</span>
-                  </button>
-                )}
+              <div className="text-right">
+                <p className="text-2xl font-bold text-white">{formatNumber(dashboardData.activeLeases)}</p>
+                <p className="text-gray-300 text-sm">Active Leases</p>
               </div>
             </div>
+            <p className="text-gray-400 text-sm mb-4">Track lease renewals, terms, and tenant agreements</p>
           </div>
-        </motion.div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center">
+                  <UserGroupIcon className="h-5 w-5 text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Tenants</h3>
+                  <p className="text-gray-300 text-sm">Manage tenant relationships</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-white">{formatNumber(dashboardData.activeTenants)}</p>
+                <p className="text-gray-300 text-sm">Active Tenants</p>
+              </div>
+            </div>
+            <p className="text-gray-400 text-sm mb-4">Manage tenant profiles, communications, and history</p>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center">
+                  <CurrencyDollarIcon className="h-5 w-5 text-yellow-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Finance</h3>
+                  <p className="text-gray-300 text-sm">Track payments and expenses</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-white">{formatCurrency(dashboardData.monthlyIncome)}</p>
+                <p className="text-gray-300 text-sm">Monthly Income</p>
+              </div>
+            </div>
+            <p className="text-gray-400 text-sm mb-4">Monitor rent collection, expenses, and financial performance</p>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center">
+                  <WrenchScrewdriverIcon className="h-5 w-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Maintenance</h3>
+                  <p className="text-gray-300 text-sm">Track property maintenance</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-white">4</p>
+                <p className="text-gray-300 text-sm">Active Requests</p>
+              </div>
+            </div>
+            <p className="text-gray-400 text-sm mb-4">Manage maintenance requests and property upkeep</p>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-indigo-500/20 rounded-full flex items-center justify-center">
+                  <PresentationChartLineIcon className="h-5 w-5 text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Reports</h3>
+                  <p className="text-gray-300 text-sm">Generate business insights</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-white">{formatPercentage(dashboardData.occupancyRate)}</p>
+                <p className="text-gray-300 text-sm">Performance</p>
+              </div>
+            </div>
+            <p className="text-gray-400 text-sm mb-4">View detailed analytics and performance reports</p>
+          </div>
+        </div>
 
         {/* Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6"
-        >
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-            <BuildingOfficeIcon className="h-8 w-8 text-blue-400 mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">Properties</h3>
-            <p className="text-gray-300 text-sm mb-4">
-              Manage your property portfolio and track performance
-            </p>
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
-              View Properties
+        <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20">
+          <h3 className="text-xl font-semibold text-white mb-4">Quick Actions</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <button className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg flex items-center space-x-3 transition-colors">
+              <PlusIcon className="h-5 w-5" />
+              <span>Add Property</span>
+            </button>
+            <button className="bg-green-600 hover:bg-green-700 text-white p-4 rounded-lg flex items-center space-x-3 transition-colors">
+              <UserGroupIcon className="h-5 w-5" />
+              <span>Add Tenant</span>
+            </button>
+            <button className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-lg flex items-center space-x-3 transition-colors">
+              <ClipboardDocumentListIcon className="h-5 w-5" />
+              <span>Create Lease</span>
+            </button>
+            <button className="bg-yellow-600 hover:bg-yellow-700 text-white p-4 rounded-lg flex items-center space-x-3 transition-colors">
+              <DocumentTextIcon className="h-5 w-5" />
+              <span>Generate Report</span>
             </button>
           </div>
-
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-            <HomeIcon className="h-8 w-8 text-green-400 mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">Tenants</h3>
-            <p className="text-gray-300 text-sm mb-4">
-              Manage tenant relationships and lease agreements
-            </p>
-            <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
-              View Tenants
-            </button>
-          </div>
-
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
-            <UserIcon className="h-8 w-8 text-purple-400 mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">Profile</h3>
-            <p className="text-gray-300 text-sm mb-4">
-              Update your profile information and preferences
-            </p>
-            <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
-              Edit Profile
-            </button>
-          </div>
-        </motion.div>
-
-        {/* Development Info */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.6 }}
-          className="mt-12 bg-white/5 backdrop-blur-lg rounded-2xl p-6 border border-white/10"
-        >
-          <h3 className="text-lg font-semibold text-white mb-4">🚀 Authentication System Status</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-green-400">✅ JWT Token Authentication</p>
-              <p className="text-green-400">✅ User Registration & Login</p>
-              <p className="text-green-400">✅ Protected Routes</p>
-            </div>
-            <div>
-              <p className="text-green-400">✅ Passkey Support (WebAuthn)</p>
-              <p className="text-green-400">✅ Secure Token Storage</p>
-              <p className="text-green-400">✅ Auto Token Refresh</p>
-            </div>
-          </div>
-        </motion.div>
+        </div>
       </div>
-    </div>
+    </DashboardLayout>
   );
 }
 
-// Export with authentication protection
 export default withAuth(DashboardPage); 

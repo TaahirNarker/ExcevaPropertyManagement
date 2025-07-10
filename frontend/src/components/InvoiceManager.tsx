@@ -285,7 +285,7 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ className = '' }) => {
   if (isLoading) {
     return (
       <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 ${className}`}>
-        <div className="animate-pulse">
+        <div className="bg-gray-100 dark:bg-gray-800">
           <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-6"></div>
           <div className="space-y-4">
             {[1, 2, 3, 4, 5].map(i => (

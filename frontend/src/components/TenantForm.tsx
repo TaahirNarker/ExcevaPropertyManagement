@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { 
   XMarkIcon, 
   UserIcon, 
@@ -420,12 +419,8 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-      >
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Removed framer-motion animation for performance */}
         <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6 flex items-center justify-between">
           <h2 className="text-xl font-bold">
             {tenant ? 'Edit Tenant Details' : 'Enter the details for the new applicant / tenant'}
@@ -454,7 +449,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
               <select
                 value={formData.type}
                 onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value as 'consumer' | 'business' }))}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-blue-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-blue-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
               >
                 <option value="consumer">Consumer</option>
                 <option value="business">Business</option>
@@ -469,7 +464,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                 type="text"
                 value={formData.display_as}
                 onChange={(e) => setFormData(prev => ({ ...prev, display_as: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                 placeholder="Internal short name for this contact"
               />
             </div>
@@ -485,7 +480,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                   type="text"
                   value={formData.first_name}
                   onChange={(e) => setFormData(prev => ({ ...prev, first_name: e.target.value }))}
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     errors.first_name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                   }`}
                   placeholder="First name"
@@ -498,7 +493,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                   type="text"
                   value={formData.surname}
                   onChange={(e) => setFormData(prev => ({ ...prev, surname: e.target.value }))}
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     errors.surname ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                   }`}
                   placeholder="Surname"
@@ -513,7 +508,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                   type="text"
                   value={formData.rsa_id_number}
                   onChange={(e) => setFormData(prev => ({ ...prev, rsa_id_number: e.target.value }))}
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     errors.rsa_id_number || errors.identification ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                   }`}
                   placeholder="RSA ID Number"
@@ -527,7 +522,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                   type="text"
                   value={formData.passport_number}
                   onChange={(e) => setFormData(prev => ({ ...prev, passport_number: e.target.value }))}
-                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                  className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     errors.identification ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                   }`}
                   placeholder="Passport Number"
@@ -548,7 +543,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                   type="text"
                   value={formData.trading_as}
                   onChange={(e) => setFormData(prev => ({ ...prev, trading_as: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                   placeholder="Trading As"
                 />
               </div>
@@ -576,7 +571,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                       type="email"
                       value={email.email}
                       onChange={(e) => updateEmail(email.id, 'email', e.target.value)}
-                      className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                      className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                         index === 0 && errors.primary_email ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
                       placeholder={index === 0 ? "Primary email address" : "Additional email address"}
@@ -618,7 +613,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                       type="tel"
                       value={phone.number}
                       onChange={(e) => updatePhone(phone.id, 'number', e.target.value)}
-                      className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                      className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                         index === 0 && errors.primary_phone ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
                       placeholder={index === 0 ? "Primary phone number" : "Additional phone number"}
@@ -683,7 +678,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                   <select
                     value={formData.property_id || ''}
                     onChange={(e) => setFormData(prev => ({ ...prev, property_id: e.target.value ? parseInt(e.target.value) : null }))}
-                    className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                    className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       errors.property ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                     }`}
                     disabled={loadingProperties}
@@ -709,7 +704,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                       type="text"
                       value={formData.new_property_name}
                       onChange={(e) => setFormData(prev => ({ ...prev, new_property_name: e.target.value }))}
-                      className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                      className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                         errors.new_property_name ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                       }`}
                       placeholder="e.g., Sunset Apartments, Ocean View Complex"
@@ -726,7 +721,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={formData.new_property_address}
                         onChange={(e) => setFormData(prev => ({ ...prev, new_property_address: e.target.value }))}
-                        className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                        className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                           errors.new_property_address ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                         }`}
                         placeholder="Street address"
@@ -742,7 +737,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={formData.new_property_city}
                         onChange={(e) => setFormData(prev => ({ ...prev, new_property_city: e.target.value }))}
-                        className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                        className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                           errors.new_property_city ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                         }`}
                         placeholder="City"
@@ -759,7 +754,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                       <select
                         value={formData.new_property_province}
                         onChange={(e) => setFormData(prev => ({ ...prev, new_property_province: e.target.value }))}
-                        className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                        className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                           errors.new_property_province ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                         }`}
                       >
@@ -785,7 +780,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={formData.new_property_postal_code}
                         onChange={(e) => setFormData(prev => ({ ...prev, new_property_postal_code: e.target.value }))}
-                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                         placeholder="Postal code"
                       />
                     </div>
@@ -846,7 +841,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={address.street}
                         onChange={(e) => updateAddress(address.id, 'street', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                         placeholder="Street Address"
                       />
                     </div>
@@ -855,7 +850,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={address.city}
                         onChange={(e) => updateAddress(address.id, 'city', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                         placeholder="City"
                       />
                     </div>
@@ -864,7 +859,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={address.province}
                         onChange={(e) => updateAddress(address.id, 'province', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                         placeholder="Province"
                       />
                     </div>
@@ -911,7 +906,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={account.account_name}
                         onChange={(e) => updateBankAccount(account.id, 'account_name', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                         placeholder="Account Name"
                       />
                     </div>
@@ -920,7 +915,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={account.account_number}
                         onChange={(e) => updateBankAccount(account.id, 'account_number', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                         placeholder="Account Number"
                       />
                     </div>
@@ -929,7 +924,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={account.bank_name}
                         onChange={(e) => updateBankAccount(account.id, 'bank_name', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                         placeholder="Bank Name"
                       />
                     </div>
@@ -938,7 +933,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
                         type="text"
                         value={account.branch_code}
                         onChange={(e) => updateBankAccount(account.id, 'branch_code', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-600 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                         placeholder="Branch Code"
                       />
                     </div>
@@ -966,7 +961,7 @@ const TenantForm = ({ isOpen, onClose, onSuccess, tenant }: TenantFormProps) => 
             </button>
           </div>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 };

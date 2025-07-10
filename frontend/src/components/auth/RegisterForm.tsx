@@ -224,7 +224,7 @@ export default function RegisterForm() {
                     checked={isLandlord}
                     onChange={toggleLandlord}
                   />
-                  <div className={`p-4 rounded-lg border-2 transition-all duration-200 ${
+                  <div className={`p-4 rounded-lg border-2 transition-colors duration-200 ${
                     isLandlord 
                       ? 'border-blue-500 bg-blue-500/10' 
                       : 'border-white/10 bg-white/5 hover:border-white/20'
@@ -249,7 +249,7 @@ export default function RegisterForm() {
                     checked={isTenant}
                     onChange={toggleTenant}
                   />
-                  <div className={`p-4 rounded-lg border-2 transition-all duration-200 ${
+                  <div className={`p-4 rounded-lg border-2 transition-colors duration-200 ${
                     isTenant 
                       ? 'border-green-500 bg-green-500/10' 
                       : 'border-white/10 bg-white/5 hover:border-white/20'
@@ -358,7 +358,7 @@ export default function RegisterForm() {
           <button
             type="submit"
             disabled={isSubmitting || loading || (!isLandlord && !isTenant)}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
           >
             {isSubmitting || loading ? (
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>

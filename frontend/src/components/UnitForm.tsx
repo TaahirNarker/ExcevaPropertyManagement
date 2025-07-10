@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
 import { 
   XMarkIcon,
   HomeIcon,
@@ -145,12 +144,8 @@ const UnitForm = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
-      >
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        {/* Removed framer-motion animation for performance */}
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-3">
@@ -196,7 +191,7 @@ const UnitForm = ({
                 value={formData.number}
                 onChange={(e) => handleChange('number', e.target.value)}
                 placeholder="e.g., 101, A1, Shop 5"
-                className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                   errors.number ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
               />
@@ -212,7 +207,7 @@ const UnitForm = ({
               <select
                 value={formData.type}
                 onChange={(e) => handleChange('type', e.target.value)}
-                className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                   errors.type ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
               >
@@ -241,7 +236,7 @@ const UnitForm = ({
                 placeholder="0.00"
                 min="0"
                 step="0.01"
-                className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                   errors.rent ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
               />
@@ -265,7 +260,7 @@ const UnitForm = ({
                 placeholder="0"
                 min="0"
                 step="0.1"
-                className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+                className={`w-full px-4 py-3 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                   errors.size ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                 }`}
               />
@@ -285,7 +280,7 @@ const UnitForm = ({
               <select
                 value={formData.status}
                 onChange={(e) => handleChange('status', e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
               >
                 <option value="available">Available</option>
                 <option value="occupied">Occupied</option>
@@ -304,7 +299,7 @@ const UnitForm = ({
                 onChange={(e) => handleChange('description', e.target.value)}
                 placeholder="Additional details about the unit..."
                 rows={3}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors resize-none"
               />
             </div>
           </div>
@@ -335,7 +330,7 @@ const UnitForm = ({
             </button>
           </div>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 };

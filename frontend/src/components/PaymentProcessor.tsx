@@ -284,7 +284,7 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({ className = '' }) =
   if (isLoading) {
     return (
       <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 ${className}`}>
-        <div className="animate-pulse">
+        <div className="bg-gray-100 dark:bg-gray-800">
           <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-6"></div>
           <div className="space-y-4">
             {[1, 2, 3].map(i => (
@@ -367,7 +367,7 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({ className = '' }) =
                         amount: invoice.total_amount 
                       }));
                     }}
-                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                    className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
                       selectedInvoice?.id === invoice.id
                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                         : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
@@ -422,7 +422,7 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({ className = '' }) =
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setPaymentMethod(method as any)}
-                        className={`p-4 border-2 rounded-lg transition-all ${
+                        className={`p-4 border-2 rounded-lg transition-colors ${
                           paymentMethod === method
                             ? `border-${color}-500 bg-${color}-50 dark:bg-${color}-900/20`
                             : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
