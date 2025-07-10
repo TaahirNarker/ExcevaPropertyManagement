@@ -220,19 +220,13 @@ SIMPLE_JWT = {
 }
 
 # WebAuthn Configuration
-WEBAUTHN_RP_ID = config('WEBAUTHN_RP_ID', default='propman.exceva.capital' if not DEBUG else 'localhost')
-WEBAUTHN_RP_NAME = config('WEBAUTHN_RP_NAME', default='Property Management System')
-WEBAUTHN_ORIGIN = config('WEBAUTHN_ORIGIN', default='https://propman.exceva.capital' if not DEBUG else 'http://localhost:3000')
+WEBAUTHN_RP_ID = 'propman.exceva.capital'
+WEBAUTHN_RP_NAME = 'Property Management System'
+WEBAUTHN_ORIGIN = ['https://propman.exceva.capital']
 
 # CORS Configuration - Updated for production
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",  # React dev server
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-    # Production domain
     "https://propman.exceva.capital",
-    "http://propman.exceva.capital",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

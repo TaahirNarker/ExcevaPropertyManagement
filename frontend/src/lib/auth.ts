@@ -8,9 +8,11 @@ import Cookies from 'js-cookie';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 
 // API Base URL - updated for production deployment
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://propman.exceva.capital/api'
-  : 'http://127.0.0.1:8000/api';
+const API_BASE_URL = 'https://propman.exceva.capital/api';
+
+// WebAuthn Configuration
+const WEBAUTHN_ORIGIN = 'https://propman.exceva.capital';
+const WEBAUTHN_RP_ID = 'propman.exceva.capital';
 
 // Token storage keys
 const ACCESS_TOKEN_KEY = 'access_token';
@@ -261,9 +263,18 @@ class AuthService {
       const { startRegistration } = await import('@simplewebauthn/browser');
       console.log('🔐 SimpleWebAuthn library imported');
 
-      // Start WebAuthn registration
+      // Start WebAuthn registration with origin and rpId
       console.log('🔐 Starting WebAuthn registration with browser...');
-      const attResp = await startRegistration(options);
+      const origin = WEBAUTHN_ORIGIN;
+      const rpId = WEBAUTHN_RP_ID;
+      if (!origin || !rpId) {
+        throw new Error('WebAuthn configuration not available');
+      }
+      const attResp = await startRegistration({
+        ...options,
+        origin,
+        rpId
+      });
       console.log('🔐 WebAuthn registration completed:', attResp);
 
       // Complete registration
@@ -323,17 +334,26 @@ class AuthService {
 
       const { options } = await beginResponse.json();
 
-      // Start WebAuthn authentication
-      const authResp = await startAuthentication(options);
+      // Start WebAuthn authentication with origin and rpId
+      const origin = WEBAUTHN_ORIGIN;
+      const rpId = WEBAUTHN_RP_ID;
+      if (!origin || !rpId) {
+        throw new Error('WebAuthn configuration not available');
+      }
+      const authResp = await startAuthentication({
+        ...options,
+        origin,
+        rpId
+      });
 
-          // Complete authentication
-    const completeResponse = await fetch(`${this.baseUrl}/auth/webauthn/login/complete/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ credential: authResp, email: email }),
-    });
+      // Complete authentication
+      const completeResponse = await fetch(`${this.baseUrl}/auth/webauthn/login/complete/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ credential: authResp, email: email }),
+      });
 
       if (!completeResponse.ok) {
         const error = await completeResponse.json();
