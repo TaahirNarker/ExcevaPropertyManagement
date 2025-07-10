@@ -17,7 +17,7 @@ export interface ServiceStatus {
  */
 export const checkBackendAPI = async (): Promise<boolean> => {
   try {
-    const response = await fetch('http://localhost:8001/api/properties/', {
+    const response = await fetch('http://150.230.123.106:8000/api/properties/', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -39,7 +39,7 @@ export const checkBackendAPI = async (): Promise<boolean> => {
  */
 export const checkDjangoAdmin = async (): Promise<boolean> => {
   try {
-    const response = await fetch('http://localhost:8001/admin/', {
+    const response = await fetch('http://150.230.123.106:8000/admin/', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

@@ -15,7 +15,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-GITHUB_REPO="https://github.com/osmannarker/ExcevaPropertyManagement.git"
+GITHUB_REPO="https://github.com/TaahirNarker/ExcevaPropertyManagement.git"
 PROJECT_NAME="ExcevaPropertyManagement"
 PROJECT_PATH="/var/www/ExcevaPropertyManagement"
 DOMAIN="propman.exceva.capital"
@@ -237,8 +237,8 @@ setup_ssl() {
     # Download SSL setup scripts if they don't exist
     if [ ! -f "deploy-ssl-propman.sh" ]; then
         echo -e "${YELLOW}📥 Downloading SSL setup scripts...${NC}"
-        curl -o deploy-ssl-propman.sh https://raw.githubusercontent.com/osmannarker/ExcevaPropertyManagement/main/deploy-ssl-propman.sh
-        curl -o verify-ssl.sh https://raw.githubusercontent.com/osmannarker/ExcevaPropertyManagement/main/verify-ssl.sh
+        curl -o deploy-ssl-propman.sh https://raw.githubusercontent.com/TaahirNarker/ExcevaPropertyManagement/main/deploy-ssl-propman.sh
+        curl -o verify-ssl.sh https://raw.githubusercontent.com/TaahirNarker/ExcevaPropertyManagement/main/verify-ssl.sh
         chmod +x deploy-ssl-propman.sh verify-ssl.sh
     fi
     

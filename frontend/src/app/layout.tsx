@@ -1,52 +1,57 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import ThemeProvider from "../components/ThemeProvider";
+import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { Toaster } from 'react-hot-toast';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "Exceva Property Management System",
-  description: "Complete property portfolio management solution for landlords, property managers, and real estate professionals. Manage properties, tenants, leases, and finances all in one place.",
-  keywords: "property management, real estate, portfolio management, tenant management, lease management, property finance, rental management",
-  authors: [{ name: "Exceva Property" }],
-  creator: "Exceva Property",
-  publisher: "Exceva Property",
-  openGraph: {
-    title: "Exceva Property Management System",
-    description: "Complete property portfolio management solution for landlords, property managers, and real estate professionals.",
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Exceva Property Management System",
-    description: "Complete property portfolio management solution for landlords, property managers, and real estate professionals.",
-  },
-  viewport: "width=device-width, initial-scale=1",
-  robots: "index, follow",
+  title: 'Property Management System',
+  description: 'Professional property portfolio management platform for landlords and property managers',
+  keywords: ['property management', 'real estate', 'landlord', 'tenant', 'portfolio'],
+  authors: [{ name: 'Property Management Team' }],
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <ThemeProvider>
+      <body className={inter.className}>
+        <AuthProvider>
           {children}
-        </ThemeProvider>
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              style: {
+                background: 'rgba(0, 0, 0, 0.8)',
+                color: 'white',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+              },
+              success: {
+                iconTheme: {
+                  primary: '#10b981',
+                  secondary: 'white',
+                },
+              },
+              error: {
+                iconTheme: {
+                  primary: '#ef4444',
+                  secondary: 'white',
+                },
+              },
+            }}
+          />
+        </AuthProvider>
       </body>
     </html>
   );

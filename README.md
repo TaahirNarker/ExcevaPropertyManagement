@@ -149,6 +149,30 @@ npm run dev
 - **Backend API**: http://localhost:8001/api/
 - **Django Admin**: http://localhost:8001/admin/
 
+## 🔐 SSL Certificate Setup
+
+### Automated Setup (Recommended)
+```bash
+# On your production server
+cd /var/www/ExcevaPropertyManagement
+./ssl-certificate-setup.sh
+```
+
+### Manual Setup
+If the automated script fails, follow the [SSL Troubleshooting Guide](ssl-troubleshooting-guide.md) for manual configuration.
+
+**Features included:**
+- ✅ Let's Encrypt SSL certificate
+- ✅ Automatic certificate renewal
+- ✅ HTTP to HTTPS redirect
+- ✅ Security headers configuration
+- ✅ Oracle Cloud firewall configuration
+
+**Your secure endpoints:**
+- **Website**: https://propman.exceva.capital
+- **Admin Panel**: https://propman.exceva.capital/admin/
+- **API**: https://propman.exceva.capital/api/
+
 ## 📁 Project Structure
 
 ```

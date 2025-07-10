@@ -18,6 +18,11 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView,
+)
 
 # Admin site customization
 admin.site.site_header = "Property Control System"
@@ -27,6 +32,12 @@ admin.site.index_title = "Property Management Dashboard"
 urlpatterns = [
     # Admin interface
     path('admin/', admin.site.urls),
+    
+    # Authentication endpoints
+    path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/auth/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('api/auth/', include('users.urls')),
     
     # API endpoints
     path('api/', include('property_control_system.api_urls')),

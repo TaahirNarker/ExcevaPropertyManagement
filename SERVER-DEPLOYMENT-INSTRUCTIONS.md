@@ -16,7 +16,7 @@ ssh ubuntu@150.230.123.106
 ### **Step 2: Download and run the complete setup script**
 ```bash
 # Download the quick setup script
-curl -o quick-setup.sh https://raw.githubusercontent.com/osmannarker/ExcevaPropertyManagement/main/quick-setup.sh
+curl -o quick-setup.sh https://raw.githubusercontent.com/TaahirNarker/ExcevaPropertyManagement/main/quick-setup.sh
 
 # Make it executable
 chmod +x quick-setup.sh
@@ -46,7 +46,7 @@ chmod +x quick-setup.sh
 ssh ubuntu@150.230.123.106
 
 # Download and run discovery script
-curl -o server-discovery.sh https://raw.githubusercontent.com/osmannarker/ExcevaPropertyManagement/main/server-discovery.sh
+curl -o server-discovery.sh https://raw.githubusercontent.com/TaahirNarker/ExcevaPropertyManagement/main/server-discovery.sh
 chmod +x server-discovery.sh
 ./server-discovery.sh
 ```
@@ -58,7 +58,7 @@ sudo mkdir -p /var/www
 cd /var/www
 
 # Clone the project
-sudo git clone https://github.com/osmannarker/ExcevaPropertyManagement.git
+sudo git clone https://github.com/TaahirNarker/ExcevaPropertyManagement.git
 sudo chown -R ubuntu:ubuntu /var/www/ExcevaPropertyManagement
 
 # Navigate to project
@@ -74,8 +74,8 @@ cd /var/www/ExcevaPropertyManagement
 ### **Step 4: Set up SSL**
 ```bash
 # Download SSL scripts
-curl -o deploy-ssl-propman.sh https://raw.githubusercontent.com/osmannarker/ExcevaPropertyManagement/main/deploy-ssl-propman.sh
-curl -o verify-ssl.sh https://raw.githubusercontent.com/osmannarker/ExcevaPropertyManagement/main/verify-ssl.sh
+curl -o deploy-ssl-propman.sh https://raw.githubusercontent.com/TaahirNarker/ExcevaPropertyManagement/main/deploy-ssl-propman.sh
+curl -o verify-ssl.sh https://raw.githubusercontent.com/TaahirNarker/ExcevaPropertyManagement/main/verify-ssl.sh
 chmod +x deploy-ssl-propman.sh verify-ssl.sh
 
 # Run SSL setup
@@ -165,7 +165,7 @@ If you encounter issues:
 ssh ubuntu@150.230.123.106
 
 # Download and run complete setup
-curl -o quick-setup.sh https://raw.githubusercontent.com/osmannarker/ExcevaPropertyManagement/main/quick-setup.sh
+curl -o quick-setup.sh https://raw.githubusercontent.com/TaahirNarker/ExcevaPropertyManagement/main/quick-setup.sh
 chmod +x quick-setup.sh
 ./quick-setup.sh
 
