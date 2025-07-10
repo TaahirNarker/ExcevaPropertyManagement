@@ -28,7 +28,11 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-temp-key-for-developm
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
+<<<<<<< Updated upstream
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,150.230.123.106,propman.exceva.capital,*', cast=Csv())
+=======
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,150.230.123.106,*', cast=Csv())
+>>>>>>> Stashed changes
 
 
 # Application definition
