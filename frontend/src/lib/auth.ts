@@ -13,18 +13,21 @@ const API_BASE_URL = process.env.NODE_ENV === 'production'
   : 'http://127.0.0.1:8000/api';
 
 // WebAuthn Configuration
-const getWebAuthnConfig = () => {
-  if (typeof window === 'undefined') {
-    return {
-      origin: process.env.NODE_ENV === 'production' ? 'https://propman.exceva.capital' : 'http://localhost:3000',
-      rpId: process.env.NODE_ENV === 'production' ? 'propman.exceva.capital' : 'localhost'
-    };
+const WEBAUTHN_CONFIG = {
+  production: {
+    origin: 'https://propman.exceva.capital',
+    rpId: 'propman.exceva.capital'
+  },
+  development: {
+    origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+    rpId: 'localhost'
   }
+};
 
-  return {
-    origin: process.env.NODE_ENV === 'production' ? 'https://propman.exceva.capital' : window.location.origin,
-    rpId: process.env.NODE_ENV === 'production' ? 'propman.exceva.capital' : 'localhost'
-  };
+const getWebAuthnConfig = () => {
+  return process.env.NODE_ENV === 'production' 
+    ? WEBAUTHN_CONFIG.production 
+    : WEBAUTHN_CONFIG.development;
 };
 
 // Token storage keys
