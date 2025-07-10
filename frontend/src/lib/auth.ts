@@ -13,13 +13,19 @@ const API_BASE_URL = process.env.NODE_ENV === 'production'
   : 'http://127.0.0.1:8000/api';
 
 // WebAuthn Configuration
-const WEBAUTHN_ORIGIN = process.env.NODE_ENV === 'production'
-  ? 'https://propman.exceva.capital'
-  : 'http://localhost:3000';
+const getWebAuthnConfig = () => {
+  if (typeof window === 'undefined') {
+    return {
+      origin: process.env.NODE_ENV === 'production' ? 'https://propman.exceva.capital' : 'http://localhost:3000',
+      rpId: process.env.NODE_ENV === 'production' ? 'propman.exceva.capital' : 'localhost'
+    };
+  }
 
-const WEBAUTHN_RP_ID = process.env.NODE_ENV === 'production'
-  ? 'propman.exceva.capital'
-  : 'localhost';
+  return {
+    origin: process.env.NODE_ENV === 'production' ? 'https://propman.exceva.capital' : window.location.origin,
+    rpId: process.env.NODE_ENV === 'production' ? 'propman.exceva.capital' : 'localhost'
+  };
+};
 
 // Token storage keys
 const ACCESS_TOKEN_KEY = 'access_token';
@@ -272,8 +278,7 @@ class AuthService {
 
       // Start WebAuthn registration with origin and rpId
       console.log('🔐 Starting WebAuthn registration with browser...');
-      const origin = WEBAUTHN_ORIGIN;
-      const rpId = WEBAUTHN_RP_ID;
+      const { origin, rpId } = getWebAuthnConfig();
       if (!origin || !rpId) {
         throw new Error('WebAuthn configuration not available');
       }
@@ -342,8 +347,7 @@ class AuthService {
       const { options } = await beginResponse.json();
 
       // Start WebAuthn authentication with origin and rpId
-      const origin = WEBAUTHN_ORIGIN;
-      const rpId = WEBAUTHN_RP_ID;
+      const { origin, rpId } = getWebAuthnConfig();
       if (!origin || !rpId) {
         throw new Error('WebAuthn configuration not available');
       }
