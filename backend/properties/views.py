@@ -18,6 +18,10 @@ from .serializers import (
     PropertyStatsSerializer, PropertyImageSerializer, 
     PropertyDocumentSerializer
 )
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import IsAuthenticated
+from django.conf import settings
+import os
 
 
 class PropertyPagination(PageNumberPagination):
@@ -490,3 +494,20 @@ def property_summary(request, property_code):
     }
     
     return Response(summary)
+
+
+class BrandingLogoUploadView(APIView):
+    parser_classes = (MultiPartParser, FormParser)
+    permission_classes = [IsAuthenticated]  # Or allow any if public
+
+    def post(self, request, format=None):
+        file_obj = request.FILES.get('logo')
+        if not file_obj or not file_obj.name.lower().endswith('.png'):
+            return Response({'error': 'Please upload a PNG file.'}, status=400)
+        logo_path = os.path.join(settings.MEDIA_ROOT, 'branding', 'logo.png')
+        os.makedirs(os.path.dirname(logo_path), exist_ok=True)
+        with open(logo_path, 'wb+') as f:
+            for chunk in file_obj.chunks():
+                f.write(chunk)
+        logo_url = request.build_absolute_uri(settings.MEDIA_URL + 'branding/logo.png')
+        return Response({'logo_url': logo_url})

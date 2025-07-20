@@ -3,7 +3,7 @@
 import { ReactNode } from 'react';
 import BurgerMenu from './BurgerMenu';
 import Link from 'next/link';
-import { useTheme } from './ThemeProvider';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface LayoutProps {
   children: ReactNode;

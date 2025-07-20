@@ -15,6 +15,9 @@ class CustomUser(AbstractUser):
     webauthn_credentials = models.TextField(blank=True, null=True, help_text="JSON data for WebAuthn credentials")
     webauthn_challenge = models.CharField(max_length=500, blank=True, null=True, help_text="Temporary challenge for WebAuthn registration/login")
     
+    # Dashboard preferences
+    dashboard_preferences = models.JSONField(default=dict, null=True, blank=True, help_text="User's dashboard customization preferences")
+    
     # Make email required and unique
     email = models.EmailField(unique=True, blank=False, null=False)
     

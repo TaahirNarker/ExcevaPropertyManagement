@@ -5,6 +5,7 @@ Defines all endpoints for property management
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from .views import BrandingLogoUploadView
 
 # Define URL patterns
 urlpatterns = [
@@ -30,4 +31,5 @@ urlpatterns = [
     # Property documents
     path('<str:property_code>/documents/', views.PropertyDocumentListView.as_view(), name='property-documents'),
     path('<str:property_code>/documents/<int:pk>/', views.PropertyDocumentDetailView.as_view(), name='property-document-detail'),
+    path('branding/logo/', BrandingLogoUploadView.as_view(), name='branding-logo-upload'),
 ] 

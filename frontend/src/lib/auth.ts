@@ -19,12 +19,18 @@ const WEBAUTHN_CONFIG = {
     rpId: 'propman.exceva.capital'
   },
   development: {
-    origin: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+    origin: 'http://localhost:3000',
     rpId: 'localhost'
   }
 };
 
 const getWebAuthnConfig = () => {
+  if (typeof window === 'undefined') {
+    return process.env.NODE_ENV === 'production' 
+      ? WEBAUTHN_CONFIG.production 
+      : WEBAUTHN_CONFIG.development;
+  }
+  
   return process.env.NODE_ENV === 'production' 
     ? WEBAUTHN_CONFIG.production 
     : WEBAUTHN_CONFIG.development;
@@ -114,16 +120,23 @@ class AuthService {
   clearTokens(): void {
     Cookies.remove(ACCESS_TOKEN_KEY);
     Cookies.remove(REFRESH_TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(USER_KEY);
+    }
   }
 
   // Store user data
   setUser(user: User): void {
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    }
   }
 
   // Get user data
   getUser(): User | null {
+    if (typeof window === 'undefined') {
+      return null;
+    }
     const userData = localStorage.getItem(USER_KEY);
     return userData ? JSON.parse(userData) : null;
   }
@@ -389,8 +402,11 @@ class AuthService {
 
   // Check if passkeys are supported
   isPasskeySupported(): boolean {
-    return typeof window !== 'undefined' && 
-           window.PublicKeyCredential !== undefined &&
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    
+    return window.PublicKeyCredential !== undefined &&
            typeof window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === 'function';
   }
 

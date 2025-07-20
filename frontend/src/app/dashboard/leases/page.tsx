@@ -350,11 +350,11 @@ export default function LeasesDashboardPage() {
       'Active': 'bg-green-100 text-green-800',
       'Expired': 'bg-red-100 text-red-800',
       'Terminated': 'bg-yellow-100 text-yellow-800',
-      'Suspended': 'bg-gray-100 text-gray-800',
+      'Suspended': 'bg-muted text-muted-foreground',
     };
 
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}`}>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status as keyof typeof statusColors] || 'bg-muted text-muted-foreground'}`}>
         {status}
       </span>
     );
@@ -401,7 +401,7 @@ export default function LeasesDashboardPage() {
 
   if (!isAuthenticated) {
     return (
-      <DashboardLayout title="Leases" subtitle="Loading...">
+      <DashboardLayout title="Leases">
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
         </div>
@@ -410,10 +410,7 @@ export default function LeasesDashboardPage() {
   }
 
   return (
-    <DashboardLayout 
-      title="Leases" 
-      subtitle="Manage lease agreements and renewals"
-    >
+    <DashboardLayout title="Leases">
       <div className="p-6">
         {/* Toolbar */}
         <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 mb-6">
@@ -433,14 +430,14 @@ export default function LeasesDashboardPage() {
                 {/* Search */}
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+                    <MagnifyingGlassIcon className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <input
                     type="text"
                     placeholder="Search leases..."
                     value={filters.search}
                     onChange={handleSearch}
-                    className="block w-full sm:w-80 pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full sm:w-80 pl-10 pr-3 py-2 border border-border rounded-md leading-5 bg-background placeholder-muted-foreground focus:outline-none focus:placeholder-muted-foreground focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
@@ -448,7 +445,7 @@ export default function LeasesDashboardPage() {
                 <select
                   value={filters.status}
                   onChange={(e) => handleFilterChange('status', e.target.value)}
-                  className="block w-full sm:w-32 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full sm:w-32 px-3 py-2 border border-border rounded-md shadow-sm bg-background focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">All Status</option>
                   {filterOptions.statuses.map(status => (
@@ -462,7 +459,7 @@ export default function LeasesDashboardPage() {
                 <select
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="block w-full sm:w-20 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full sm:w-20 px-3 py-2 border border-border rounded-md shadow-sm bg-background focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value={10}>10</option>
                   <option value={20}>20</option>
@@ -473,7 +470,7 @@ export default function LeasesDashboardPage() {
                 {/* Filters Toggle */}
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="inline-flex items-center px-3 py-2 border border-border rounded-md shadow-sm text-sm font-medium text-foreground bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   <AdjustmentsHorizontalIcon className="h-5 w-5" />
                 </button>
@@ -549,7 +546,7 @@ export default function LeasesDashboardPage() {
                         rental_frequency: '',
                         expiry_status: '',
                       })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-border rounded-md shadow-sm text-sm font-medium text-foreground bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     >
                       Clear Filters
                     </button>
@@ -561,22 +558,22 @@ export default function LeasesDashboardPage() {
         </div>
 
         {/* Leases Table */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 overflow-hidden">
+        <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
             </div>
           ) : leases.length === 0 ? (
             <div className="text-center py-12">
-              <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-300 text-lg mb-2">No leases found</p>
-              <p className="text-gray-400 text-sm">Get started by adding your first lease</p>
+              <DocumentTextIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-foreground text-lg mb-2">No leases found</p>
+              <p className="text-muted-foreground text-sm">Get started by adding your first lease</p>
             </div>
           ) : (
             <>
               {/* Table Header */}
-              <div className="bg-white/5 px-6 py-3 border-b border-white/20">
-                <div className="grid grid-cols-12 gap-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <div className="bg-muted/50 px-6 py-3 border-b border-border">
+                <div className="grid grid-cols-12 gap-4 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <div className="col-span-2">Lease</div>
                   <div className="col-span-2">Property</div>
                   <div className="col-span-2">Tenant</div>
@@ -588,9 +585,9 @@ export default function LeasesDashboardPage() {
               </div>
 
               {/* Table Body */}
-              <div className="divide-y divide-white/10">
+              <div className="divide-y divide-border">
                 {leases.map((lease) => (
-                  <div key={lease.id} className="px-6 py-4 hover:bg-white/5">
+                  <div key={lease.id} className="px-6 py-4 hover:bg-muted/30">
                     <div className="grid grid-cols-12 gap-4 items-start">
                       {/* Lease Info */}
                       <div className="col-span-2">
@@ -602,7 +599,7 @@ export default function LeasesDashboardPage() {
                           >
                             {lease.lease_code}
                           </button>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {lease.lease_type}
                           </div>
                           {renderExpiryWarning(lease)}
@@ -612,10 +609,10 @@ export default function LeasesDashboardPage() {
                       {/* Property */}
                       <div className="col-span-2">
                         <div className="space-y-1">
-                          <div className="font-medium text-white">
+                          <div className="font-medium text-foreground">
                             {lease.property_name}
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {lease.property_code}
                           </div>
                         </div>
@@ -624,10 +621,10 @@ export default function LeasesDashboardPage() {
                       {/* Tenant */}
                       <div className="col-span-2">
                         <div className="space-y-1">
-                          <div className="font-medium text-white">
+                          <div className="font-medium text-foreground">
                             {lease.tenant_name}
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {lease.tenant_code}
                           </div>
                         </div>
@@ -636,10 +633,10 @@ export default function LeasesDashboardPage() {
                       {/* Landlord */}
                       <div className="col-span-2">
                         <div className="space-y-1">
-                          <div className="font-medium text-white">
+                          <div className="font-medium text-foreground">
                             {lease.landlord_name}
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {lease.landlord_code}
                           </div>
                         </div>
@@ -648,15 +645,15 @@ export default function LeasesDashboardPage() {
                       {/* Terms */}
                       <div className="col-span-2">
                         <div className="space-y-1">
-                          <div className="flex items-center text-sm text-white">
+                          <div className="flex items-center text-sm text-foreground">
                             <BanknotesIcon className="h-4 w-4 mr-2 text-green-400" />
                             {formatCurrency(lease.monthly_rent)}/month
                           </div>
-                          <div className="flex items-center text-sm text-gray-300">
+                          <div className="flex items-center text-sm text-muted-foreground">
                             <CalendarDaysIcon className="h-4 w-4 mr-2 text-blue-400" />
                             {formatDate(lease.start_date)} - {formatDate(lease.end_date)}
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             Deposit: {formatCurrency(lease.deposit)}
                           </div>
                         </div>
@@ -673,21 +670,21 @@ export default function LeasesDashboardPage() {
                           {/* View action navigates to detail page */}
                           <button
                             onClick={() => router.push(`/dashboard/leases/${lease.id}`)}
-                            className="text-gray-400 hover:text-white"
+                            className="text-muted-foreground hover:text-foreground"
                             title="View"
                           >
                             <EyeIcon className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleEditLease(lease.lease_code)}
-                            className="text-gray-400 hover:text-blue-400"
+                            className="text-muted-foreground hover:text-blue-400"
                             title="Edit"
                           >
                             <PencilIcon className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteLease(lease.lease_code)}
-                            className="text-gray-400 hover:text-red-400"
+                            className="text-muted-foreground hover:text-red-400"
                             title="Delete"
                           >
                             <TrashIcon className="h-4 w-4" />
@@ -701,26 +698,26 @@ export default function LeasesDashboardPage() {
 
               {/* Pagination */}
               {totalCount > pageSize && (
-                <div className="bg-white/5 px-6 py-3 border-t border-white/20">
+                <div className="bg-muted/50 px-6 py-3 border-t border-border">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-300">
+                    <div className="text-sm text-muted-foreground">
                       Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} results
                     </div>
                     <div className="flex space-x-2">
                       <button
                         onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-gray-300 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1 border border-border rounded text-sm font-medium text-muted-foreground bg-background hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Previous
                       </button>
-                      <span className="px-3 py-1 text-sm text-gray-300">
+                      <span className="px-3 py-1 text-sm text-muted-foreground">
                         Page {currentPage} of {Math.ceil(totalCount / pageSize)}
                       </span>
                       <button
                         onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(totalCount / pageSize)))}
                         disabled={currentPage >= Math.ceil(totalCount / pageSize)}
-                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-gray-300 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1 border border-border rounded text-sm font-medium text-muted-foreground bg-background hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Next
                       </button>
@@ -733,7 +730,7 @@ export default function LeasesDashboardPage() {
         </div>
 
         {/* Results Summary */}
-        <div className="mt-4 text-sm text-gray-300">
+        <div className="mt-4 text-sm text-muted-foreground">
           {totalCount} leases found.
         </div>
       </div>

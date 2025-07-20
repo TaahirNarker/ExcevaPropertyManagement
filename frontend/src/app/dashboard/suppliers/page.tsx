@@ -409,11 +409,11 @@ export default function SuppliersDashboardPage() {
   };
 
   const handleViewSupplier = (supplierCode: string) => {
-    toast.info(`View supplier ${supplierCode} - Feature coming soon`);
+    toast(`View supplier ${supplierCode} - Feature coming soon`);
   };
 
   const handleEditSupplier = (supplierCode: string) => {
-    toast.info(`Edit supplier ${supplierCode} - Feature coming soon`);
+    toast(`Edit supplier ${supplierCode} - Feature coming soon`);
   };
 
   const handleDeleteSupplier = async (supplierCode: string) => {
@@ -435,12 +435,12 @@ export default function SuppliersDashboardPage() {
   const renderStatusBadge = (status: string) => {
     const statusColors = {
       'Active': 'bg-green-100 text-green-800',
-      'Inactive': 'bg-gray-100 text-gray-800',
+      'Inactive': 'bg-muted text-muted-foreground',
       'Suspended': 'bg-red-100 text-red-800',
     };
 
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}`}>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status as keyof typeof statusColors] || 'bg-muted text-muted-foreground'}`}>
         {status}
       </span>
     );
@@ -467,7 +467,7 @@ export default function SuppliersDashboardPage() {
     const emptyStars = 5 - Math.ceil(rating);
     for (let i = 0; i < emptyStars; i++) {
       stars.push(
-        <StarIcon key={`empty-${i}`} className="h-4 w-4 text-gray-300" />
+        <StarIcon key={`empty-${i}`} className="h-4 w-4 text-muted-foreground" />
       );
     }
     
@@ -476,7 +476,7 @@ export default function SuppliersDashboardPage() {
         <div className="flex">
           {stars}
         </div>
-        <span className="text-sm text-gray-300">({rating.toFixed(1)})</span>
+        <span className="text-sm text-muted-foreground">({rating.toFixed(1)})</span>
       </div>
     );
   };
@@ -493,7 +493,7 @@ export default function SuppliersDashboardPage() {
 
   if (!isAuthenticated) {
     return (
-      <DashboardLayout title="Suppliers" subtitle="Loading...">
+      <DashboardLayout title="Suppliers">
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
         </div>
@@ -502,13 +502,10 @@ export default function SuppliersDashboardPage() {
   }
 
   return (
-    <DashboardLayout 
-      title="Suppliers" 
-      subtitle="Manage your service providers and contractors"
-    >
+    <DashboardLayout title="Suppliers">
       <div className="p-6">
         {/* Toolbar */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 mb-6">
+        <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border mb-6">
           <div className="p-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0 sm:space-x-4">
               {/* Left side - Add button */}
@@ -525,14 +522,14 @@ export default function SuppliersDashboardPage() {
                 {/* Search */}
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+                    <MagnifyingGlassIcon className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <input
                     type="text"
                     placeholder="Search suppliers..."
                     value={filters.search}
                     onChange={handleSearch}
-                    className="block w-full sm:w-80 pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full sm:w-80 pl-10 pr-3 py-2 border border-border rounded-md leading-5 bg-muted/50 placeholder-muted-foreground text-foreground focus:outline-none focus:placeholder-muted-foreground focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
@@ -540,7 +537,7 @@ export default function SuppliersDashboardPage() {
                 <select
                   value={filters.category}
                   onChange={(e) => handleFilterChange('category', e.target.value)}
-                  className="block w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full sm:w-40 px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">All Categories</option>
                   {filterOptions.categories.map(category => (
@@ -554,7 +551,7 @@ export default function SuppliersDashboardPage() {
                 <select
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="block w-full sm:w-20 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full sm:w-20 px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value={10}>10</option>
                   <option value={20}>20</option>
@@ -565,7 +562,7 @@ export default function SuppliersDashboardPage() {
                 {/* Filters Toggle */}
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="inline-flex items-center px-3 py-2 border border-border rounded-md shadow-sm text-sm font-medium text-foreground bg-muted/50 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   <AdjustmentsHorizontalIcon className="h-5 w-5" />
                 </button>
@@ -574,17 +571,17 @@ export default function SuppliersDashboardPage() {
 
             {/* Expanded Filters */}
             {showFilters && (
-              <div className="mt-4 pt-4 border-t border-white/20">
+              <div className="mt-4 pt-4 border-t border-border">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Province */}
                   <div>
-                    <label className="block text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       Province
                     </label>
                     <select
                       value={filters.province}
                       onChange={(e) => handleFilterChange('province', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="block w-full px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">All Provinces</option>
                       {filterOptions.provinces.map(province => (
@@ -597,13 +594,13 @@ export default function SuppliersDashboardPage() {
 
                   {/* Status */}
                   <div>
-                    <label className="block text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       Status
                     </label>
                     <select
                       value={filters.status}
                       onChange={(e) => handleFilterChange('status', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="block w-full px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">All Statuses</option>
                       {filterOptions.statuses.map(status => (
@@ -616,13 +613,13 @@ export default function SuppliersDashboardPage() {
 
                   {/* Verified */}
                   <div>
-                    <label className="block text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       Verified
                     </label>
                     <select
                       value={filters.is_verified}
                       onChange={(e) => handleFilterChange('is_verified', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="block w-full px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">All</option>
                       <option value="true">Verified</option>
@@ -632,13 +629,13 @@ export default function SuppliersDashboardPage() {
 
                   {/* Preferred */}
                   <div>
-                    <label className="block text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       Preferred
                     </label>
                     <select
                       value={filters.is_preferred}
                       onChange={(e) => handleFilterChange('is_preferred', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="block w-full px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">All</option>
                       <option value="true">Preferred</option>
@@ -648,13 +645,13 @@ export default function SuppliersDashboardPage() {
 
                   {/* Rating */}
                   <div>
-                    <label className="block text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       Min Rating
                     </label>
                     <select
                       value={filters.rating}
                       onChange={(e) => handleFilterChange('rating', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="block w-full px-3 py-2 border border-border rounded-md shadow-sm bg-muted/50 text-foreground focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">All Ratings</option>
                       <option value="4.5">4.5+ Stars</option>
@@ -676,7 +673,7 @@ export default function SuppliersDashboardPage() {
                         is_preferred: '',
                         rating: '',
                       })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-border rounded-md shadow-sm text-sm font-medium text-foreground bg-muted/50 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     >
                       Clear Filters
                     </button>
@@ -688,22 +685,22 @@ export default function SuppliersDashboardPage() {
         </div>
 
         {/* Suppliers Table */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 overflow-hidden">
+        <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
             </div>
           ) : suppliers.length === 0 ? (
             <div className="text-center py-12">
-              <WrenchScrewdriverIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-300 text-lg mb-2">No suppliers found</p>
-              <p className="text-gray-400 text-sm">Get started by adding your first supplier</p>
+              <WrenchScrewdriverIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-foreground text-lg mb-2">No suppliers found</p>
+              <p className="text-muted-foreground text-sm">Get started by adding your first supplier</p>
             </div>
           ) : (
             <>
               {/* Table Header */}
               <div className="bg-white/5 px-6 py-3 border-b border-white/20">
-                <div className="grid grid-cols-12 gap-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                <div className="grid grid-cols-12 gap-4 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <div className="col-span-3">Supplier</div>
                   <div className="col-span-3">Contact</div>
                   <div className="col-span-2">Category</div>
@@ -738,7 +735,7 @@ export default function SuppliersDashboardPage() {
                           <div className="font-medium text-white">
                             {supplier.name}
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {supplier.contact_person}
                           </div>
                           {renderRating(supplier.rating)}
@@ -748,15 +745,15 @@ export default function SuppliersDashboardPage() {
                       {/* Contact */}
                       <div className="col-span-3">
                         <div className="space-y-1">
-                          <div className="flex items-center text-sm text-gray-300">
+                          <div className="flex items-center text-sm text-muted-foreground">
                             <EnvelopeIcon className="h-4 w-4 mr-2" />
                             {supplier.email}
                           </div>
-                          <div className="flex items-center text-sm text-gray-300">
+                          <div className="flex items-center text-sm text-muted-foreground">
                             <PhoneIcon className="h-4 w-4 mr-2" />
                             {supplier.phone}
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {supplier.city}, {supplier.province}
                           </div>
                         </div>
@@ -769,10 +766,10 @@ export default function SuppliersDashboardPage() {
                             <WrenchScrewdriverIcon className="h-4 w-4 text-blue-400 mr-2" />
                             <span className="text-white text-sm">{supplier.category}</span>
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {supplier.subcategory}
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {supplier.services_provided.length} services
                           </div>
                         </div>
@@ -784,13 +781,13 @@ export default function SuppliersDashboardPage() {
                           <div className="text-sm text-white">
                             {formatCurrency(supplier.hourly_rate)}/hour
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             Min: {formatCurrency(supplier.min_call_out_fee)}
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             Response: {supplier.response_time}
                           </div>
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {supplier.total_services} jobs completed
                           </div>
                         </div>
@@ -806,21 +803,21 @@ export default function SuppliersDashboardPage() {
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleViewSupplier(supplier.supplier_code)}
-                            className="text-gray-400 hover:text-white"
+                            className="text-muted-foreground/70 hover:text-white"
                             title="View"
                           >
                             <EyeIcon className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleEditSupplier(supplier.supplier_code)}
-                            className="text-gray-400 hover:text-blue-400"
+                            className="text-muted-foreground/70 hover:text-blue-400"
                             title="Edit"
                           >
                             <PencilIcon className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteSupplier(supplier.supplier_code)}
-                            className="text-gray-400 hover:text-red-400"
+                            className="text-muted-foreground/70 hover:text-red-400"
                             title="Delete"
                           >
                             <TrashIcon className="h-4 w-4" />
@@ -836,24 +833,24 @@ export default function SuppliersDashboardPage() {
               {totalCount > pageSize && (
                 <div className="bg-white/5 px-6 py-3 border-t border-white/20">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-300">
+                    <div className="text-sm text-muted-foreground">
                       Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} results
                     </div>
                     <div className="flex space-x-2">
                       <button
                         onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-gray-300 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-muted-foreground bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Previous
                       </button>
-                      <span className="px-3 py-1 text-sm text-gray-300">
+                      <span className="px-3 py-1 text-sm text-muted-foreground">
                         Page {currentPage} of {Math.ceil(totalCount / pageSize)}
                       </span>
                       <button
                         onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(totalCount / pageSize)))}
                         disabled={currentPage >= Math.ceil(totalCount / pageSize)}
-                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-gray-300 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-muted-foreground bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Next
                       </button>
@@ -866,7 +863,7 @@ export default function SuppliersDashboardPage() {
         </div>
 
         {/* Results Summary */}
-        <div className="mt-4 text-sm text-gray-300">
+        <div className="mt-4 text-sm text-muted-foreground">
           {totalCount} suppliers found.
         </div>
       </div>

@@ -1,173 +1,205 @@
 /**
  * Add Tenant Page
- * Comprehensive tenant creation form with return to lease form functionality
+ * Comprehensive tenant creation form with modern UI design
  */
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import { 
+  XMarkIcon,
+  PlusIcon,
   UserIcon,
-  PhoneIcon,
   EnvelopeIcon,
-  IdentificationIcon,
-  BuildingOfficeIcon,
-  MapPinIcon
+  PhoneIcon,
+  MapPinIcon,
+  BanknotesIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
+import { tenantAPI } from '@/lib/api';
 import toast from 'react-hot-toast';
 
-// Tenant form interface
-interface TenantFormData {
-  name: string;
-  email: string;
-  phone: string;
-  id_number: string;
-  date_of_birth: string;
-  employment_status: string;
-  employer_name: string;
-  monthly_income: string;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
-  emergency_contact_relationship: string;
-  address: string;
-  city: string;
-  province: string;
-  postal_code: string;
-  notes: string;
-}
+// Form validation schema
+const tenantFormSchema = z.object({
+  // Basic Information
+  type: z.enum(['Consumer', 'Business']),
+  display_name: z.string().optional(),
+  first_name: z.string().min(2, 'First name is required'),
+  last_name: z.string().min(2, 'Last name is required'),
+  rsa_id_number: z.string().optional(),
+  passport_number: z.string().optional(),
+  trading_as: z.string().optional(),
+  
+  // Contact Information
+  emails: z.array(z.object({
+    email: z.string().email('Invalid email address'),
+    type: z.enum(['primary', 'secondary']),
+  })).min(1, 'At least one email is required'),
+  
+  phones: z.array(z.object({
+    number: z.string().min(10, 'Phone number is required'),
+    type: z.enum(['mobile', 'home', 'work']),
+  })).min(1, 'At least one phone number is required'),
+  
+  // Addresses
+  addresses: z.array(z.object({
+    street: z.string().min(5, 'Street address is required'),
+    city: z.string().min(2, 'City is required'),
+    province: z.string().min(2, 'Province is required'),
+    postal_code: z.string().min(4, 'Postal code is required'),
+    type: z.enum(['residential', 'postal', 'work']),
+  })).min(1, 'At least one address is required'),
+  
+  // Bank Accounts
+  bank_accounts: z.array(z.object({
+    bank_name: z.string().min(2, 'Bank name is required'),
+    account_number: z.string().min(8, 'Account number is required'),
+    branch_code: z.string().min(6, 'Branch code is required'),
+    account_type: z.enum(['current', 'savings', 'credit']),
+  })).optional(),
+});
 
-// Form options
-const EMPLOYMENT_STATUSES = [
-  { value: '', label: '-- Select employment status --' },
-  { value: 'employed', label: 'Employed' },
-  { value: 'self_employed', label: 'Self Employed' },
-  { value: 'unemployed', label: 'Unemployed' },
-  { value: 'student', label: 'Student' },
-  { value: 'retired', label: 'Retired' },
-  { value: 'other', label: 'Other' },
-];
-
-const PROVINCES = [
-  { value: '', label: '--Province--' },
-  { value: 'western_cape', label: 'Western Cape' },
-  { value: 'eastern_cape', label: 'Eastern Cape' },
-  { value: 'northern_cape', label: 'Northern Cape' },
-  { value: 'free_state', label: 'Free State' },
-  { value: 'kwazulu_natal', label: 'KwaZulu-Natal' },
-  { value: 'north_west', label: 'North West' },
-  { value: 'gauteng', label: 'Gauteng' },
-  { value: 'mpumalanga', label: 'Mpumalanga' },
-  { value: 'limpopo', label: 'Limpopo' },
-];
+export type TenantFormData = z.infer<typeof tenantFormSchema>;
 
 export default function AddTenantPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Form state
-  const [formData, setFormData] = useState<TenantFormData>({
-    name: '',
-    email: '',
-    phone: '',
-    id_number: '',
-    date_of_birth: '',
-    employment_status: '',
-    employer_name: '',
-    monthly_income: '',
-    emergency_contact_name: '',
-    emergency_contact_phone: '',
-    emergency_contact_relationship: '',
-    address: '',
-    city: '',
-    province: '',
-    postal_code: '',
-    notes: '',
+  const { register, handleSubmit, formState: { errors }, watch, setValue, getValues } = useForm<TenantFormData>({
+    resolver: zodResolver(tenantFormSchema),
+    defaultValues: {
+      type: 'Consumer',
+      display_name: '',
+      first_name: '',
+      last_name: '',
+      rsa_id_number: '',
+      passport_number: '',
+      trading_as: '',
+      emails: [{ email: '', type: 'primary' as const }],
+      phones: [{ number: '', type: 'mobile' as const }],
+      addresses: [{ street: '', city: '', province: '', postal_code: '', type: 'residential' as const }],
+      bank_accounts: [],
+    },
   });
 
-  const [loading, setLoading] = useState(false);
+  const watchedType = watch('type');
+  const watchedEmails = watch('emails');
+  const watchedPhones = watch('phones');
+  const watchedAddresses = watch('addresses');
+  const watchedBankAccounts = watch('bank_accounts');
 
-  // Initialize component
-  useEffect(() => {
-    // Component initialization if needed
-  }, [isAuthenticated]);
-
-  // Handle form input changes
-  const handleInputChange = (field: keyof TenantFormData, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  // Dynamic field management
+  const addEmail = () => {
+    const currentEmails = getValues('emails');
+    setValue('emails', [...currentEmails, { email: '', type: 'secondary' as const }]);
   };
 
-  // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validation
-    if (!formData.name.trim()) {
-      toast.error('Tenant name is required');
-      return;
+  const removeEmail = (index: number) => {
+    const currentEmails = getValues('emails');
+    if (currentEmails.length > 1) {
+      setValue('emails', currentEmails.filter((_, i) => i !== index));
     }
-    
-    if (!formData.email.trim()) {
-      toast.error('Email is required');
-      return;
-    }
-    
-    if (!formData.phone.trim()) {
-      toast.error('Phone number is required');
-      return;
-    }
+  };
 
+  const addPhone = () => {
+    const currentPhones = getValues('phones');
+    setValue('phones', [...currentPhones, { number: '', type: 'mobile' as const }]);
+  };
+
+  const removePhone = (index: number) => {
+    const currentPhones = getValues('phones');
+    if (currentPhones.length > 1) {
+      setValue('phones', currentPhones.filter((_, i) => i !== index));
+    }
+  };
+
+  const addAddress = () => {
+    const currentAddresses = getValues('addresses');
+    setValue('addresses', [...currentAddresses, { street: '', city: '', province: '', postal_code: '', type: 'residential' as const }]);
+  };
+
+  const removeAddress = (index: number) => {
+    const currentAddresses = getValues('addresses');
+    if (currentAddresses.length > 1) {
+      setValue('addresses', currentAddresses.filter((_, i) => i !== index));
+    }
+  };
+
+  const addBankAccount = () => {
+    const currentAccounts = getValues('bank_accounts') || [];
+    setValue('bank_accounts', [...currentAccounts, { bank_name: '', account_number: '', branch_code: '', account_type: 'current' as const }]);
+  };
+
+  const removeBankAccount = (index: number) => {
+    const currentAccounts = getValues('bank_accounts') || [];
+    setValue('bank_accounts', currentAccounts.filter((_, i) => i !== index));
+  };
+
+  const handleFormSubmit = async (data: TenantFormData) => {
     try {
-      setLoading(true);
+      setIsSubmitting(true);
       
-      // Mock API call - in real implementation, this would call the backend
-      const newTenant = {
-        id: Date.now().toString(),
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        code: `TEN${Date.now().toString().slice(-6)}`,
-        status: 'active',
-        ...formData
+      // Transform data to match backend expectations
+      const tenantData = {
+        // User fields
+        email: data.emails[0]?.email || '',
+        first_name: data.first_name,
+        last_name: data.last_name,
+        
+        // Tenant fields
+        id_number: data.rsa_id_number || data.passport_number || '',
+        date_of_birth: '1990-01-01', // Default date - you may want to add this field
+        phone: data.phones[0]?.number || '',
+        alternative_phone: data.phones[1]?.number || '',
+        alternative_email: data.emails[1]?.email || '',
+        
+        // Address fields (use first address)
+        address: data.addresses[0]?.street || '',
+        city: data.addresses[0]?.city || '',
+        province: data.addresses[0]?.province || '',
+        postal_code: data.addresses[0]?.postal_code || '',
+        
+        // Employment (default values)
+        employment_status: 'employed',
+        employer_name: '',
+        employer_contact: '',
+        monthly_income: null,
+        
+        // Emergency contact (default values)
+        emergency_contact_name: 'Emergency Contact',
+        emergency_contact_phone: data.phones[0]?.number || '',
+        emergency_contact_relationship: 'Family',
+        
+        // Status
+        status: 'pending',
+        notes: `Type: ${data.type}${data.display_name ? `, Display Name: ${data.display_name}` : ''}${data.trading_as ? `, Trading As: ${data.trading_as}` : ''}`
       };
 
-      console.log('Created tenant:', newTenant); // Debug log
-      
-      // Show success message with tenant code
-      toast.success(`Tenant ${newTenant.code} created successfully!`);
-      
-      // Check if we should return to lease form
-      const returnToLeaseForm = sessionStorage.getItem('returnToLeaseForm');
-      
-      if (returnToLeaseForm === 'true') {
-        // Clear the flag and navigate back to lease form
-        sessionStorage.removeItem('returnToLeaseForm');
-        router.push('/dashboard/leases/add');
-      } else {
-        // Navigate back to tenants list
-        router.push('/dashboard/tenants');
-      }
+      await tenantAPI.create(tenantData);
+      toast.success('Tenant created successfully!');
+      router.push('/dashboard/tenants');
     } catch (error) {
       console.error('Error creating tenant:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create tenant');
+      toast.error('Failed to create tenant. Please try again.');
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
-  // Handle cancel
   const handleCancel = () => {
     router.push('/dashboard/tenants');
   };
 
   if (!isAuthenticated) {
     return (
-      <DashboardLayout title="Add Tenant" subtitle="Loading...">
+      <DashboardLayout title="Add Tenant">
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
         </div>
@@ -176,310 +208,389 @@ export default function AddTenantPage() {
   }
 
   return (
-    <DashboardLayout title="Add Tenant" subtitle="Create a new tenant profile">
+    <DashboardLayout title="Add New Tenant">
       <div className="p-6">
-        {/* Back button */}
-        <div className="mb-6">
-          <button
-            onClick={handleCancel}
-            className="inline-flex items-center px-4 py-2 border border-white/20 rounded-md shadow-sm text-sm font-medium text-white bg-white/10 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            ← Back to Tenants
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-6">
-          {/* Personal Information */}
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+          {/* Basic Information */}
           <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
-            <h3 className="text-lg font-medium text-white mb-4 flex items-center">
-              <UserIcon className="h-5 w-5 mr-2" />
-              Personal Information
-            </h3>
+            <h3 className="text-lg font-medium text-white mb-4">Basic Information</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Name */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Type */}
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Full Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter full name"
-                />
-              </div>
-
-              {/* Email */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Email Address *
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter email address"
-                />
-              </div>
-
-              {/* Phone */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Phone Number *
-                </label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter phone number"
-                />
-              </div>
-
-              {/* ID Number */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  ID Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.id_number}
-                  onChange={(e) => handleInputChange('id_number', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter ID number"
-                />
-              </div>
-
-              {/* Date of Birth */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Date of Birth
-                </label>
-                <input
-                  type="date"
-                  value={formData.date_of_birth}
-                  onChange={(e) => handleInputChange('date_of_birth', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Employment Information */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
-            <h3 className="text-lg font-medium text-white mb-4 flex items-center">
-              <BuildingOfficeIcon className="h-5 w-5 mr-2" />
-              Employment Information
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Employment Status */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Employment Status
-                </label>
+                <label className="block text-sm font-medium text-white mb-1">Type</label>
                 <select
-                  value={formData.employment_status}
-                  onChange={(e) => handleInputChange('employment_status', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  {...register('type')}
+                  className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 >
-                  {EMPLOYMENT_STATUSES.map(status => (
-                    <option key={status.value} value={status.value}>
-                      {status.label}
-                    </option>
-                  ))}
+                  <option value="Consumer">Consumer</option>
+                  <option value="Business">Business</option>
                 </select>
+                {errors.type && (
+                  <p className="text-red-400 text-sm mt-1">{errors.type.message}</p>
+                )}
               </div>
 
-              {/* Employer Name */}
+              {/* Display Name */}
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Employer Name
-                </label>
+                <label className="block text-sm font-medium text-white mb-1">Display As</label>
                 <input
                   type="text"
-                  value={formData.employer_name}
-                  onChange={(e) => handleInputChange('employer_name', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter employer name"
+                  placeholder="Internal short name for this contact"
+                  {...register('display_name')}
+                  className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
+                {errors.display_name && (
+                  <p className="text-red-400 text-sm mt-1">{errors.display_name.message}</p>
+                )}
               </div>
+            </div>
 
-              {/* Monthly Income */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Monthly Income (R)
-                </label>
-                <input
-                  type="number"
-                  value={formData.monthly_income}
-                  onChange={(e) => handleInputChange('monthly_income', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter monthly income"
-                  min="0"
-                />
+            {/* Person Section */}
+            <div className="mt-6">
+              <h4 className="text-md font-medium text-white mb-3 flex items-center">
+                <UserIcon className="h-5 w-5 mr-2" />
+                Person
+              </h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-white mb-1">First name</label>
+                  <input
+                    type="text"
+                    {...register('first_name')}
+                    className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                  {errors.first_name && (
+                    <p className="text-red-400 text-sm mt-1">{errors.first_name.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-white mb-1">Surname</label>
+                  <input
+                    type="text"
+                    {...register('last_name')}
+                    className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                  {errors.last_name && (
+                    <p className="text-red-400 text-sm mt-1">{errors.last_name.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-white mb-1">RSA ID Number</label>
+                  <input
+                    type="text"
+                    {...register('rsa_id_number')}
+                    className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                  {errors.rsa_id_number && (
+                    <p className="text-red-400 text-sm mt-1">{errors.rsa_id_number.message}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-white mb-1">Passport Number</label>
+                  <input
+                    type="text"
+                    {...register('passport_number')}
+                    className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                  {errors.passport_number && (
+                    <p className="text-red-400 text-sm mt-1">{errors.passport_number.message}</p>
+                  )}
+                </div>
               </div>
+            </div>
+
+            {/* Sole Proprietor Section */}
+            {watchedType === 'Business' && (
+              <div className="mt-6">
+                <h4 className="text-md font-medium text-white mb-3">Sole Proprietor</h4>
+                <div>
+                  <label className="block text-sm font-medium text-white mb-1">Trading As</label>
+                  <input
+                    type="text"
+                    {...register('trading_as')}
+                    className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                  {errors.trading_as && (
+                    <p className="text-red-400 text-sm mt-1">{errors.trading_as.message}</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Emails */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-white flex items-center">
+                <EnvelopeIcon className="h-5 w-5 mr-2" />
+                Emails
+              </h3>
+              <button
+                type="button"
+                onClick={addEmail}
+                className="text-blue-400 hover:text-blue-300 text-sm flex items-center"
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                Add another email address
+              </button>
+            </div>
+            
+            <div className="space-y-3">
+              {watchedEmails?.map((email, index) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <input
+                    type="email"
+                    {...register(`emails.${index}.email`)}
+                    placeholder="Email address"
+                    className="flex-1 px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                  <select
+                    {...register(`emails.${index}.type`)}
+                    className="px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  >
+                    <option value="primary">Primary</option>
+                    <option value="secondary">Secondary</option>
+                  </select>
+                  {watchedEmails.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeEmail(index)}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Emergency Contact */}
+          {/* Phone Numbers */}
           <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
-            <h3 className="text-lg font-medium text-white mb-4 flex items-center">
-              <PhoneIcon className="h-5 w-5 mr-2" />
-              Emergency Contact
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-white flex items-center">
+                <PhoneIcon className="h-5 w-5 mr-2" />
+                Numbers
+              </h3>
+              <button
+                type="button"
+                onClick={addPhone}
+                className="text-blue-400 hover:text-blue-300 text-sm flex items-center"
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                Add another phone
+              </button>
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Emergency Contact Name */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Contact Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.emergency_contact_name}
-                  onChange={(e) => handleInputChange('emergency_contact_name', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter contact name"
-                />
-              </div>
-
-              {/* Emergency Contact Phone */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Contact Phone
-                </label>
-                <input
-                  type="tel"
-                  value={formData.emergency_contact_phone}
-                  onChange={(e) => handleInputChange('emergency_contact_phone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter contact phone"
-                />
-              </div>
-
-              {/* Emergency Contact Relationship */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Relationship
-                </label>
-                <input
-                  type="text"
-                  value={formData.emergency_contact_relationship}
-                  onChange={(e) => handleInputChange('emergency_contact_relationship', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., Spouse, Parent"
-                />
-              </div>
+            <div className="space-y-3">
+              {watchedPhones?.map((phone, index) => (
+                <div key={index} className="flex items-center space-x-2">
+                  <input
+                    type="tel"
+                    {...register(`phones.${index}.number`)}
+                    placeholder="Phone number"
+                    className="flex-1 px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  />
+                  <select
+                    {...register(`phones.${index}.type`)}
+                    className="px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  >
+                    <option value="mobile">Mobile</option>
+                    <option value="home">Home</option>
+                    <option value="work">Work</option>
+                  </select>
+                  {watchedPhones.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removePhone(index)}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Address Information */}
+          {/* Addresses */}
           <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
-            <h3 className="text-lg font-medium text-white mb-4 flex items-center">
-              <MapPinIcon className="h-5 w-5 mr-2" />
-              Address Information
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-white flex items-center">
+                <MapPinIcon className="h-5 w-5 mr-2" />
+                Addresses
+              </h3>
+              <button
+                type="button"
+                onClick={addAddress}
+                className="text-blue-400 hover:text-blue-300 text-sm flex items-center"
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                Add another address
+              </button>
+            </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Address */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-white mb-2">
-                  Address
-                </label>
-                <input
-                  type="text"
-                  value={formData.address}
-                  onChange={(e) => handleInputChange('address', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter address"
-                />
-              </div>
-
-              {/* City */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  City
-                </label>
-                <input
-                  type="text"
-                  value={formData.city}
-                  onChange={(e) => handleInputChange('city', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter city"
-                />
-              </div>
-
-              {/* Province */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Province
-                </label>
-                <select
-                  value={formData.province}
-                  onChange={(e) => handleInputChange('province', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {PROVINCES.map(province => (
-                    <option key={province.value} value={province.value}>
-                      {province.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Postal Code */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Postal Code
-                </label>
-                <input
-                  type="text"
-                  value={formData.postal_code}
-                  onChange={(e) => handleInputChange('postal_code', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter postal code"
-                />
-              </div>
+            <div className="space-y-4">
+              {watchedAddresses?.map((address, index) => (
+                <div key={index} className="border border-white/10 rounded-md p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <select
+                      {...register(`addresses.${index}.type`)}
+                      className="px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    >
+                      <option value="residential">Residential</option>
+                      <option value="postal">Postal</option>
+                      <option value="work">Work</option>
+                    </select>
+                    {watchedAddresses.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeAddress(index)}
+                        className="text-red-400 hover:text-red-300"
+                      >
+                        <XMarkIcon className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="md:col-span-2">
+                      <input
+                        type="text"
+                        {...register(`addresses.${index}.street`)}
+                        placeholder="Street address"
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        {...register(`addresses.${index}.city`)}
+                        placeholder="City"
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        {...register(`addresses.${index}.province`)}
+                        placeholder="Province"
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        {...register(`addresses.${index}.postal_code`)}
+                        placeholder="Postal code"
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Notes */}
+          {/* Bank Accounts */}
           <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
-            <h3 className="text-lg font-medium text-white mb-4">Additional Notes</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-white flex items-center">
+                <BanknotesIcon className="h-5 w-5 mr-2" />
+                Accounts
+              </h3>
+              <button
+                type="button"
+                onClick={addBankAccount}
+                className="text-blue-400 hover:text-blue-300 text-sm flex items-center"
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                Add another bank account
+              </button>
+            </div>
             
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Notes
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) => handleInputChange('notes', e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter any additional notes about the tenant"
-              />
+            <div className="space-y-4">
+              {watchedBankAccounts?.map((account, index) => (
+                <div key={index} className="border border-white/10 rounded-md p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-white">Bank Account {index + 1}</h4>
+                    <button
+                      type="button"
+                      onClick={() => removeBankAccount(index)}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      <XMarkIcon className="h-5 w-5" />
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <input
+                        type="text"
+                        {...register(`bank_accounts.${index}.bank_name`)}
+                        placeholder="Bank name"
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        {...register(`bank_accounts.${index}.account_number`)}
+                        placeholder="Account number"
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        {...register(`bank_accounts.${index}.branch_code`)}
+                        placeholder="Branch code"
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <select
+                        {...register(`bank_accounts.${index}.account_type`)}
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      >
+                        <option value="current">Current</option>
+                        <option value="savings">Savings</option>
+                        <option value="credit">Credit</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {(!watchedBankAccounts || watchedBankAccounts.length === 0) && (
+                <div className="text-center py-8 text-muted-foreground/70">
+                  <BanknotesIcon className="mx-auto h-12 w-12 mb-2" />
+                  <p>No bank accounts added yet</p>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Form Actions */}
-          <div className="flex justify-end space-x-4">
+          <div className="flex items-center justify-end space-x-4 pt-6">
             <button
               type="button"
               onClick={handleCancel}
-              className="px-6 py-2 border border-white/20 rounded-md shadow-sm text-sm font-medium text-white bg-white/10 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="px-6 py-2 border border-white/20 rounded-md text-white bg-white/10 backdrop-blur-sm hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="px-6 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isSubmitting}
+              className="px-6 py-2 border border-transparent rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Creating...' : 'Create Tenant'}
+              {isSubmitting ? 'Creating...' : 'Create Tenant'}
             </button>
           </div>
         </form>

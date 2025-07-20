@@ -247,7 +247,7 @@ export default function AddLandlordPage() {
 
   if (!isAuthenticated) {
     return (
-      <DashboardLayout title="Add Landlord" subtitle="Loading...">
+      <DashboardLayout title="Add Landlord">
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
         </div>
@@ -256,10 +256,7 @@ export default function AddLandlordPage() {
   }
 
   return (
-    <DashboardLayout 
-      title="Add Landlord" 
-      subtitle="Create a new landlord profile"
-    >
+    <DashboardLayout title="Add Landlord">
       <div className="p-6">
         {/* Back button */}
         <div className="mb-6">
@@ -291,7 +288,7 @@ export default function AddLandlordPage() {
                 <div className="flex flex-col items-center space-y-2">
                   <UserIcon className="h-8 w-8 text-blue-400" />
                   <span className="text-white font-medium">Individual</span>
-                  <span className="text-sm text-gray-300">Private person</span>
+                  <span className="text-sm text-muted-foreground">Private person</span>
                 </div>
               </button>
 
@@ -308,7 +305,7 @@ export default function AddLandlordPage() {
                 <div className="flex flex-col items-center space-y-2">
                   <BuildingOfficeIcon className="h-8 w-8 text-green-400" />
                   <span className="text-white font-medium">Company</span>
-                  <span className="text-sm text-gray-300">Business entity</span>
+                  <span className="text-sm text-muted-foreground">Business entity</span>
                 </div>
               </button>
 
@@ -325,7 +322,7 @@ export default function AddLandlordPage() {
                 <div className="flex flex-col items-center space-y-2">
                   <ExclamationTriangleIcon className="h-8 w-8 text-yellow-400" />
                   <span className="text-white font-medium">Trust</span>
-                  <span className="text-sm text-gray-300">Trust fund</span>
+                  <span className="text-sm text-muted-foreground">Trust fund</span>
                 </div>
               </button>
             </div>
@@ -577,7 +574,7 @@ export default function AddLandlordPage() {
           {/* Banking Information */}
           <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
             <h3 className="text-lg font-medium text-white mb-4">Banking Information</h3>
-            <p className="text-sm text-gray-300 mb-4">
+            <p className="text-sm text-muted-foreground mb-4">
               Optional: Add bank details for payment processing
             </p>
             
@@ -690,7 +687,7 @@ export default function AddLandlordPage() {
             <button
               type="button"
               onClick={handleCancel}
-              className="px-6 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="px-6 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-foreground bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               Cancel
             </button>

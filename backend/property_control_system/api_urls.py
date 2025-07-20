@@ -69,10 +69,13 @@ urlpatterns = [
     # Properties management endpoints
     path('properties/', include('properties.urls')),
     
-    # Placeholder endpoints for frontend development
-    path('tenants/', placeholder_list_view, name='tenants-list'),
-    path('tenants/<str:pk>/', placeholder_detail_view, name='tenants-detail'),
+    # Tenants management endpoints
+    path('tenants/', include('tenants.urls')),
     
+    # Finance management endpoints
+    path('finance/', include('finance.urls')),
+    
+    # Placeholder endpoints for frontend development
     path('units/', placeholder_list_view, name='units-list'),
     path('units/<str:pk>/', placeholder_detail_view, name='units-detail'),
     

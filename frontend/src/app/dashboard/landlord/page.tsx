@@ -266,12 +266,12 @@ export default function LandlordDashboardPage() {
   const renderStatusBadge = (status: string) => {
     const statusColors = {
       'Active': 'bg-green-100 text-green-800',
-      'Inactive': 'bg-gray-100 text-gray-800',
+      'Inactive': 'bg-muted text-muted-foreground',
       'Suspended': 'bg-red-100 text-red-800',
     };
 
     return (
-      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}`}>
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[status as keyof typeof statusColors] || 'bg-muted text-muted-foreground'}`}>
         {status}
       </span>
     );
@@ -289,7 +289,7 @@ export default function LandlordDashboardPage() {
 
   if (!isAuthenticated) {
     return (
-      <DashboardLayout title="Landlords" subtitle="Loading...">
+      <DashboardLayout title="Landlords">
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
         </div>
@@ -298,13 +298,10 @@ export default function LandlordDashboardPage() {
   }
 
   return (
-    <DashboardLayout 
-      title="Landlords" 
-      subtitle="Manage your landlord relationships"
-    >
+    <DashboardLayout title="Landlords">
       <div className="p-6">
         {/* Toolbar */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 mb-6">
+        <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border mb-6">
           <div className="p-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0 sm:space-x-4">
               {/* Left side - Add button */}
@@ -321,14 +318,14 @@ export default function LandlordDashboardPage() {
                 {/* Search */}
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+                    <MagnifyingGlassIcon className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <input
                     type="text"
                     placeholder="Search landlords..."
                     value={filters.search}
                     onChange={handleSearch}
-                    className="block w-full sm:w-80 pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full sm:w-80 pl-10 pr-3 py-2 border border-border rounded-md leading-5 bg-background placeholder-muted-foreground focus:outline-none focus:placeholder-muted-foreground focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
@@ -336,7 +333,7 @@ export default function LandlordDashboardPage() {
                 <select
                   value={filters.is_active}
                   onChange={(e) => handleFilterChange('is_active', e.target.value)}
-                  className="block w-full sm:w-32 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full sm:w-32 px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">All</option>
                   <option value="true">Active</option>
@@ -347,7 +344,7 @@ export default function LandlordDashboardPage() {
                 <select
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
-                  className="block w-full sm:w-20 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full sm:w-20 px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value={10}>10</option>
                   <option value={20}>20</option>
@@ -358,7 +355,7 @@ export default function LandlordDashboardPage() {
                 {/* Filters Toggle */}
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="inline-flex items-center px-3 py-2 border border-border rounded-md shadow-sm text-sm font-medium text-foreground bg-muted/50 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   <AdjustmentsHorizontalIcon className="h-5 w-5" />
                 </button>
@@ -367,17 +364,17 @@ export default function LandlordDashboardPage() {
 
             {/* Expanded Filters */}
             {showFilters && (
-              <div className="mt-4 pt-4 border-t border-white/20">
+              <div className="mt-4 pt-4 border-t border-border">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Type */}
                   <div>
-                    <label className="block text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       Type
                     </label>
                     <select
                       value={filters.type}
                       onChange={(e) => handleFilterChange('type', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">All Types</option>
                       {filterOptions.types.map(type => (
@@ -390,13 +387,13 @@ export default function LandlordDashboardPage() {
 
                   {/* Status */}
                   <div>
-                    <label className="block text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-foreground mb-1">
                       Status
                     </label>
                     <select
                       value={filters.status}
                       onChange={(e) => handleFilterChange('status', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="">All Statuses</option>
                       {filterOptions.statuses.map(status => (
@@ -416,7 +413,7 @@ export default function LandlordDashboardPage() {
                         status: '',
                         is_active: 'true',
                       })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-border rounded-md shadow-sm text-sm font-medium text-foreground bg-muted/50 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     >
                       Clear Filters
                     </button>
@@ -428,22 +425,22 @@ export default function LandlordDashboardPage() {
         </div>
 
         {/* Landlords Table */}
-        <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 overflow-hidden">
+        <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
             </div>
           ) : landlords.length === 0 ? (
             <div className="text-center py-12">
-              <UserIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-300 text-lg mb-2">No landlords found</p>
-              <p className="text-gray-400 text-sm">Get started by adding your first landlord</p>
+              <UserIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground text-lg mb-2">No landlords found</p>
+              <p className="text-muted-foreground text-sm">Get started by adding your first landlord</p>
             </div>
           ) : (
             <>
               {/* Table Header */}
-              <div className="bg-white/5 px-6 py-3 border-b border-white/20">
-                <div className="grid grid-cols-12 gap-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+              <div className="bg-muted/50 px-6 py-3 border-b border-border">
+                <div className="grid grid-cols-12 gap-4 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <div className="col-span-3">Landlord</div>
                   <div className="col-span-3">Contact</div>
                   <div className="col-span-2">Type</div>
@@ -454,9 +451,9 @@ export default function LandlordDashboardPage() {
               </div>
 
               {/* Table Body */}
-              <div className="divide-y divide-white/10">
+              <div className="divide-y divide-border">
                 {landlords.map((landlord) => (
-                  <div key={landlord.id} className="px-6 py-4 hover:bg-white/5">
+                  <div key={landlord.id} className="px-6 py-4 hover:bg-muted/50">
                     <div className="grid grid-cols-12 gap-4 items-start">
                       {/* Landlord Info */}
                       <div className="col-span-3">
@@ -467,11 +464,11 @@ export default function LandlordDashboardPage() {
                           >
                             {landlord.landlord_code}
                           </button>
-                          <div className="font-medium text-white">
+                          <div className="font-medium text-foreground">
                             {landlord.name}
                           </div>
                           {landlord.company_name && (
-                            <div className="text-sm text-gray-300">
+                            <div className="text-sm text-muted-foreground">
                               {landlord.company_name}
                             </div>
                           )}
@@ -481,11 +478,11 @@ export default function LandlordDashboardPage() {
                       {/* Contact */}
                       <div className="col-span-3">
                         <div className="space-y-1">
-                          <div className="text-sm text-gray-300">
+                          <div className="text-sm text-muted-foreground">
                             {landlord.email}
                           </div>
                           {landlord.phone && (
-                            <div className="text-sm text-gray-300">
+                            <div className="text-sm text-muted-foreground">
                               {landlord.phone}
                             </div>
                           )}
@@ -503,7 +500,7 @@ export default function LandlordDashboardPage() {
                           <span className="text-white text-sm">{landlord.type}</span>
                         </div>
                         {landlord.vat_number && (
-                          <div className="text-xs text-gray-400 mt-1">
+                          <div className="text-xs text-muted-foreground/70 mt-1">
                             VAT: {landlord.vat_number}
                           </div>
                         )}
@@ -531,21 +528,21 @@ export default function LandlordDashboardPage() {
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleViewLandlord(landlord.landlord_code)}
-                            className="text-gray-400 hover:text-white"
+                            className="text-muted-foreground/70 hover:text-white"
                             title="View"
                           >
                             <EyeIcon className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleEditLandlord(landlord.landlord_code)}
-                            className="text-gray-400 hover:text-blue-400"
+                            className="text-muted-foreground/70 hover:text-blue-400"
                             title="Edit"
                           >
                             <PencilIcon className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleDeleteLandlord(landlord.landlord_code)}
-                            className="text-gray-400 hover:text-red-400"
+                            className="text-muted-foreground/70 hover:text-red-400"
                             title="Delete"
                           >
                             <TrashIcon className="h-4 w-4" />
@@ -561,24 +558,24 @@ export default function LandlordDashboardPage() {
               {totalCount > pageSize && (
                 <div className="bg-white/5 px-6 py-3 border-t border-white/20">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-300">
+                    <div className="text-sm text-muted-foreground">
                       Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} results
                     </div>
                     <div className="flex space-x-2">
                       <button
                         onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-gray-300 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-muted-foreground bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Previous
                       </button>
-                      <span className="px-3 py-1 text-sm text-gray-300">
+                      <span className="px-3 py-1 text-sm text-muted-foreground">
                         Page {currentPage} of {Math.ceil(totalCount / pageSize)}
                       </span>
                       <button
                         onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(totalCount / pageSize)))}
                         disabled={currentPage >= Math.ceil(totalCount / pageSize)}
-                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-gray-300 bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1 border border-white/20 rounded text-sm font-medium text-muted-foreground bg-white/10 hover:bg-white/20 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Next
                       </button>
@@ -591,7 +588,7 @@ export default function LandlordDashboardPage() {
         </div>
 
         {/* Results Summary */}
-        <div className="mt-4 text-sm text-gray-300">
+        <div className="mt-4 text-sm text-muted-foreground">
           {totalCount} landlords found.
         </div>
       </div>

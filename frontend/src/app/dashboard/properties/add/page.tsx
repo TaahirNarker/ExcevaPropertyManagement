@@ -188,7 +188,7 @@ export default function AddPropertyPage() {
 
   if (!isAuthenticated) {
     return (
-      <DashboardLayout title="Add Property" subtitle="Loading...">
+      <DashboardLayout title="Add Property">
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
         </div>
@@ -197,34 +197,34 @@ export default function AddPropertyPage() {
   }
 
   return (
-    <DashboardLayout title="Add Property" subtitle="Create a new property in your portfolio">
+    <DashboardLayout title="Add Property">
       <div className="p-6">
         <form onSubmit={handleSubmit} className="max-w-6xl mx-auto space-y-6">
           {/* Property Name */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
+          <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Property name:
                 </label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => handleInputChange('name', e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground"
                   placeholder="Property name (Max 40 characters)"
                   maxLength={40}
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Description (Optional):
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => handleInputChange('description', e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground"
                   placeholder="Property description"
                   rows={3}
                 />
@@ -233,22 +233,22 @@ export default function AddPropertyPage() {
           </div>
 
           {/* Property Address & Map */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
+          <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Address Fields */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-white">Property address:</h3>
+                <h3 className="text-lg font-semibold text-foreground">Property address:</h3>
                 
                 <div className="relative">
                   <input
                     type="text"
                     value={formData.street_address}
                     onChange={(e) => handleInputChange('street_address', e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground"
                     placeholder="Building No. & Name / Street No. & Name"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                    <EllipsisHorizontalIcon className="h-5 w-5 text-gray-400" />
+                    <EllipsisHorizontalIcon className="h-5 w-5 text-muted-foreground/70" />
                   </div>
                 </div>
 
@@ -256,7 +256,7 @@ export default function AddPropertyPage() {
                   type="text"
                   value={formData.address_line_2}
                   onChange={(e) => handleInputChange('address_line_2', e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground"
                   placeholder="Address line 2 (Optional)"
                 />
 
@@ -266,11 +266,11 @@ export default function AddPropertyPage() {
                       type="text"
                       value={formData.suburb}
                       onChange={(e) => handleInputChange('suburb', e.target.value)}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground"
                       placeholder="Suburb"
                     />
                     <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                      <EllipsisHorizontalIcon className="h-5 w-5 text-gray-400" />
+                      <EllipsisHorizontalIcon className="h-5 w-5 text-muted-foreground/70" />
                     </div>
                   </div>
 
@@ -278,7 +278,7 @@ export default function AddPropertyPage() {
                     type="text"
                     value={formData.city}
                     onChange={(e) => handleInputChange('city', e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground"
                     placeholder="City"
                   />
                 </div>
@@ -287,7 +287,7 @@ export default function AddPropertyPage() {
                   <select
                     value={formData.province}
                     onChange={(e) => handleInputChange('province', e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground"
                   >
                     {PROVINCES.map(province => (
                       <option key={province.value} value={province.value}>
@@ -300,7 +300,7 @@ export default function AddPropertyPage() {
                     type="text"
                     value={formData.postal_code}
                     onChange={(e) => handleInputChange('postal_code', e.target.value)}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground"
                     placeholder="Postal Code"
                   />
                 </div>
@@ -309,12 +309,12 @@ export default function AddPropertyPage() {
 
               {/* Map Placeholder */}
               <div className="space-y-4">
-                <div className="bg-gray-200 rounded-lg overflow-hidden" style={{ height: '400px' }}>
-                  <div className="w-full h-full bg-gradient-to-br from-blue-200 to-blue-300 relative flex items-center justify-center">
+                <div className="bg-muted rounded-lg overflow-hidden" style={{ height: '400px' }}>
+                  <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/30 relative flex items-center justify-center">
                     <div className="text-center">
-                      <MapPinIcon className="h-12 w-12 text-blue-600 mx-auto mb-2" />
-                      <p className="text-gray-700 font-medium">Map Integration</p>
-                      <p className="text-gray-500 text-sm">Location selection coming soon</p>
+                      <MapPinIcon className="h-12 w-12 text-primary mx-auto mb-2" />
+                      <p className="text-foreground font-medium">Map Integration</p>
+                      <p className="text-muted-foreground/70 text-sm">Location selection coming soon</p>
                     </div>
                   </div>
                 </div>
@@ -323,9 +323,9 @@ export default function AddPropertyPage() {
           </div>
 
           {/* Additional Options (Optional) */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
+          <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
             <div className="space-y-6">
-              <div className="text-center text-gray-300">
+              <div className="text-center text-muted-foreground">
                 <p className="text-sm">Additional property management features</p>
                 <p className="text-xs mt-1">Landlord and bank account management can be configured after property creation</p>
               </div>
@@ -333,17 +333,17 @@ export default function AddPropertyPage() {
           </div>
 
           {/* Property Details */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
+          <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Property Type */}
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Property type
                 </label>
                 <select
                   value={formData.property_type}
                   onChange={(e) => handleInputChange('property_type', e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground"
                 >
                   {PROPERTY_TYPES.map(type => (
                     <option key={type.value} value={type.value}>
@@ -355,7 +355,7 @@ export default function AddPropertyPage() {
 
               {/* Bedrooms */}
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Bedrooms
                 </label>
                 <div className="flex items-center space-x-2">
@@ -363,20 +363,20 @@ export default function AddPropertyPage() {
                     type="number"
                     value={formData.bedrooms}
                     onChange={(e) => handleInputChange('bedrooms', parseInt(e.target.value) || 0)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="flex-1 px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground"
                     min="0"
                   />
                   <button
                     type="button"
                     onClick={() => handleNumberChange('bedrooms', false)}
-                    className="p-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                    className="p-2 border border-border rounded-md hover:bg-muted"
                   >
                     <MinusIcon className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
                     onClick={() => handleNumberChange('bedrooms', true)}
-                    className="p-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                    className="p-2 border border-border rounded-md hover:bg-muted"
                   >
                     <PlusIcon className="h-4 w-4" />
                   </button>
@@ -385,7 +385,7 @@ export default function AddPropertyPage() {
 
               {/* Building Size */}
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label className="block text-sm font-medium text-foreground mb-2">
                   Building size (m²)
                 </label>
                 <div className="flex items-center space-x-2">
@@ -393,20 +393,20 @@ export default function AddPropertyPage() {
                     type="number"
                     value={formData.square_meters}
                     onChange={(e) => handleInputChange('square_meters', parseInt(e.target.value) || 0)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    className="flex-1 px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground"
                     min="0"
                   />
                   <button
                     type="button"
                     onClick={() => handleNumberChange('square_meters', false)}
-                    className="p-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                    className="p-2 border border-border rounded-md hover:bg-muted"
                   >
                     <MinusIcon className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
                     onClick={() => handleNumberChange('square_meters', true)}
-                    className="p-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                    className="p-2 border border-border rounded-md hover:bg-muted"
                   >
                     <PlusIcon className="h-4 w-4" />
                   </button>
@@ -416,19 +416,19 @@ export default function AddPropertyPage() {
           </div>
 
           {/* Form Actions */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
+          <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
             <div className="flex justify-end space-x-4">
               <button
                 type="button"
                 onClick={handleCancel}
-                className="px-6 py-2 border border-gray-300 rounded-md text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-6 py-2 border border-border rounded-md text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/80 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Creating...' : 'Create Property'}
               </button>

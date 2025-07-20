@@ -41,6 +41,7 @@ urlpatterns = [
     
     # API endpoints
     path('api/', include('property_control_system.api_urls')),
+    path('api/reports/', include('reports.urls')),
 ]
 
 # Serve media files in development
