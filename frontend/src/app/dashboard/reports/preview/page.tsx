@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   Download, 
@@ -59,7 +59,7 @@ interface ReportData {
   }>;
 }
 
-const ReportPreviewPage = () => {
+const ReportPreviewContent = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const reportId = searchParams.get('id') || '1';
@@ -530,6 +530,21 @@ const ReportPreviewPage = () => {
         </div>
       </div>
     </DashboardLayout>
+  );
+};
+
+const ReportPreviewPage = () => {
+  return (
+    <Suspense fallback={
+      <DashboardLayout title="Report Preview">
+        <div className="flex items-center justify-center py-20">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mb-4"></div>
+          <p className="text-muted-foreground">Loading report preview...</p>
+        </div>
+      </DashboardLayout>
+    }>
+      <ReportPreviewContent />
+    </Suspense>
   );
 };
 
