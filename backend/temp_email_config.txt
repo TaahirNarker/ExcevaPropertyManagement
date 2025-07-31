@@ -1,0 +1,20 @@
+# Email Configuration - ZOHO Mail
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.zoho.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_USE_SSL=False
+EMAIL_HOST_USER=admin@rentpilot.co.za
+EMAIL_HOST_PASSWORD=63CPHTWss9q9
+
+# Default email addresses
+DEFAULT_FROM_EMAIL=admin@rentpilot.co.za
+SERVER_EMAIL=admin@rentpilot.co.za
+
+# Invoice-specific email settings
+INVOICE_FROM_EMAIL=admin@rentpilot.co.za
+INVOICE_REPLY_TO_EMAIL=admin@rentpilot.co.za
+
+# Admin notification emails
+PAYMENT_NOTIFICATION_EMAILS=admin@rentpilot.co.za
+ADMIN_BASE_URL=http://localhost:8000

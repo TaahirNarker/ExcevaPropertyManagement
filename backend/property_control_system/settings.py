@@ -53,6 +53,8 @@ INSTALLED_APPS = [
     'finance',
     'users',
     'reports',
+    'payments',  # Bitcoin Lightning payments via Strike API
+    'debt_management',  # Debt collection and management
 ]
 
 MIDDLEWARE = [
@@ -228,6 +230,8 @@ WEBAUTHN_ORIGIN = ['https://propman.exceva.capital']
 # CORS Configuration - Updated for production
 CORS_ALLOWED_ORIGINS = [
     "https://propman.exceva.capital",
+    "http://localhost:3000",  # Allow local development frontend
+    "http://127.0.0.1:3000",  # Alternative local address
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -288,3 +292,49 @@ LOGGING = {
         },
     },
 }
+
+# ========================================
+# BITCOIN LIGHTNING PAYMENT CONFIGURATION
+# ========================================
+
+# Strike API Configuration
+STRIKE_API_BASE_URL = config('STRIKE_API_BASE_URL', default='https://api.strike.me/v1')
+STRIKE_API_KEY = config('STRIKE_API_KEY', default='')
+STRIKE_WEBHOOK_SECRET = config('STRIKE_WEBHOOK_SECRET', default='')
+
+# Payment Configuration
+LIGHTNING_INVOICE_EXPIRY_MINUTES = config('LIGHTNING_INVOICE_EXPIRY_MINUTES', default=15, cast=int)
+PAYMENT_BASE_URL = config('PAYMENT_BASE_URL', default='http://localhost:3000/pay')
+
+# Strike Webhook Settings
+STRIKE_WEBHOOK_EVENTS = [
+    'invoice.created',
+    'invoice.updated', 
+    'invoice.paid',
+    'invoice.canceled'
+]
+
+# ========================================
+# EMAIL CONFIGURATION - ZOHO MAIL
+# ========================================
+
+# Email Backend Configuration for ZOHO Mail
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = config('EMAIL_HOST', default='smtp.zoho.com')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_USE_SSL = config('EMAIL_USE_SSL', default=False, cast=bool)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='noreply@rentpilot.co.za')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+
+# Default email settings
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@rentpilot.co.za')
+SERVER_EMAIL = config('SERVER_EMAIL', default='noreply@rentpilot.co.za')
+
+# Invoice email settings
+INVOICE_FROM_EMAIL = config('INVOICE_FROM_EMAIL', default='noreply@rentpilot.co.za')
+INVOICE_REPLY_TO_EMAIL = config('INVOICE_REPLY_TO_EMAIL', default='admin@rentpilot.co.za')
+
+# Admin notification emails for payment confirmations
+PAYMENT_NOTIFICATION_EMAILS = config('PAYMENT_NOTIFICATION_EMAILS', default='admin@rentpilot.co.za')
+ADMIN_BASE_URL = config('ADMIN_BASE_URL', default='http://localhost:8000')

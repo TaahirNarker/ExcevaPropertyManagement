@@ -1,0 +1,44 @@
+# Strike API Setup Instructions
+
+Follow these steps to securely set up your Strike API credentials:
+
+1. Copy the template to your .env file:
+
+```bash
+cp env_template_bitcoin.txt .env
+```
+
+2. Edit the .env file and add your Strike API key:
+
+```
+STRIKE_API_BASE_URL=https://api.strike.me/v1
+STRIKE_API_KEY=C76F8D791A36EBF6583B3E25BBF316CE316A70AB3507EA6A4628C3DAD4CO1FBF
+STRIKE_WEBHOOK_SECRET=your-webhook-secret-here  # You'll need to get this from Strike dashboard
+```
+
+3. Set your production domain for payment URLs:
+
+```
+PAYMENT_BASE_URL=https://propman.exceva.capital/pay
+ADMIN_BASE_URL=https://propman.exceva.capital
+PAYMENT_NOTIFICATION_EMAILS=admin@exceva.capital,manager@exceva.capital
+```
+
+4. Set up your webhook URL in Strike dashboard:
+   - Log in to your Strike account
+   - Navigate to API settings
+   - Add a webhook endpoint: https://propman.exceva.capital/api/payments/webhook/strike/
+   - Subscribe to these events:
+     - invoice.created
+     - invoice.updated
+     - invoice.paid
+     - invoice.canceled
+   - Copy the webhook secret and add it to your .env file
+
+5. Test your configuration by restarting the server and checking logs:
+   ```bash
+   # You should see "✅ Strike API key configured successfully" in the logs
+   python3 manage.py runserver 8000
+   ```
+
+IMPORTANT: Keep your API keys secure! Never commit them to version control or share them publicly. 

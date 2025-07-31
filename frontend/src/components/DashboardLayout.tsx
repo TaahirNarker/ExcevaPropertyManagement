@@ -29,7 +29,8 @@ import {
   BuildingOffice2Icon,
   ShieldCheckIcon,
   FaceSmileIcon,
-  ClipboardDocumentCheckIcon
+  ClipboardDocumentCheckIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -43,6 +44,7 @@ const navigationItems = [
   { name: 'Properties', icon: BuildingOfficeIcon, href: '/dashboard/properties', current: false },
   { name: 'Leases', icon: ClipboardDocumentListIcon, href: '/dashboard/leases', current: false },
   { name: 'Tenants', icon: UserGroupIcon, href: '/dashboard/tenants', current: false },
+  { name: 'Debt Management', icon: ExclamationTriangleIcon, href: '/dashboard/debt-management', current: false },
   { name: 'CRM', icon: UserIcon, href: '/dashboard/crm', current: false },
   { name: 'Landlord', icon: BuildingOffice2Icon, href: '/dashboard/landlord', current: false },
   { name: 'Maintenance', icon: WrenchScrewdriverIcon, href: '/dashboard/maintenance', current: false },

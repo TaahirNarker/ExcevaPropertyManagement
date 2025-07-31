@@ -1,0 +1,5 @@
+# Strike Webhook Setup Instructions
+
+Add the following to your .env file:
+
+STRIKE_WEBHOOK_SECRET=o09OPGB8WSSafDKxdzi6t4j49j0Fs0ezTAenZngk

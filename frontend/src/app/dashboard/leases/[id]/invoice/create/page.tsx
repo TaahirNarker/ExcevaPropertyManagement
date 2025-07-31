@@ -12,7 +12,10 @@ import {
   ExclamationTriangleIcon,
   ClockIcon,
   CogIcon,
+  PaperAirplaneIcon,
+  LockClosedIcon
 } from '@heroicons/react/24/outline';
+import { invoiceApi } from '@/lib/api';
 
 const STATUS_OPTIONS = [
   { value: 'not_actioned', label: 'Not yet actioned', icon: ClockIcon, color: 'text-muted-foreground/70' },
@@ -49,6 +52,12 @@ export default function InvoiceCreatePage() {
   const [bankInfo, setBankInfo] = useState('');
   const [extraNotes, setExtraNotes] = useState('');
 
+  // Invoice creation and sending state
+  const [createdInvoice, setCreatedInvoice] = useState<any>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
   // Line item handlers
   const handleLineChange = (idx: number, field: string, value: any) => {
     setLineItems(items => items.map((item, i) =>
@@ -57,6 +66,89 @@ export default function InvoiceCreatePage() {
   };
   const addLine = () => setLineItems([...lineItems, { description: '', category: '', quantity: 1, price: 0, total: 0 }]);
   const removeLine = (idx: number) => setLineItems(items => items.filter((_, i) => i !== idx));
+
+  // Invoice creation and sending functions
+  const createInvoice = async () => {
+    if (!leaseId) {
+      alert('No lease ID found');
+      return null;
+    }
+
+    setIsCreating(true);
+    try {
+      const invoiceData = {
+        title: title || 'Monthly Invoice',
+        issue_date: issueDate,
+        due_date: dueDate,
+        lease: leaseId,
+        status: 'draft',
+        tax_rate: taxRate,
+        notes: notes,
+        email_subject: emailSubject,
+        email_recipient: emailRecipient,
+        bank_info: bankInfo,
+        extra_notes: extraNotes,
+        line_items: lineItems.map(item => ({
+          description: item.description,
+          category: item.category || 'general',
+          quantity: item.quantity,
+          unit_price: item.price,
+        })).filter(item => item.description.trim() !== '')
+      };
+
+      const invoice = await invoiceApi.createInvoice(invoiceData);
+      setCreatedInvoice(invoice);
+      alert('Invoice created successfully!');
+      return invoice;
+    } catch (error) {
+      console.error('Failed to create invoice:', error);
+      alert('Failed to create invoice. Please try again.');
+      return null;
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const sendInvoice = async () => {
+    let invoice = createdInvoice;
+    
+    // Create invoice first if it doesn't exist
+    if (!invoice) {
+      invoice = await createInvoice();
+      if (!invoice) return;
+    }
+
+    setIsSending(true);
+    try {
+      const result = await invoiceApi.sendInvoice(invoice.id, 'email', emailRecipient);
+      
+      if (result.success) {
+        // Update the invoice state to reflect it's been sent
+        setCreatedInvoice({
+          ...invoice,
+          status: result.status || 'locked',
+          is_locked: true
+        });
+        setShowSuccessMessage(true);
+        setTimeout(() => setShowSuccessMessage(false), 5000);
+      } else {
+        alert(`Failed to send invoice: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Failed to send invoice:', error);
+      alert('Failed to send invoice. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const canSendInvoice = () => {
+    return createdInvoice && invoiceApi.canSend(createdInvoice);
+  };
+
+  const isInvoiceLocked = () => {
+    return createdInvoice && invoiceApi.isLocked(createdInvoice);
+  };
 
   // Totals
   const subtotal = lineItems.reduce((sum, item) => sum + (item.total || 0), 0);
@@ -228,6 +320,100 @@ export default function InvoiceCreatePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={bankInfo} onChange={e => setBankInfo(e.target.value)} placeholder="Bank Information" />
           <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="Notes" />
+        </div>
+
+        {/* Success Message */}
+        {showSuccessMessage && (
+          <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 flex items-center gap-3">
+            <CheckCircleIcon className="h-6 w-6 text-green-400" />
+            <span className="text-green-300 font-medium">Invoice sent successfully! The invoice is now locked and cannot be edited.</span>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-white/20">
+          {/* Debug Info */}
+          <div className="text-xs text-white/50 mb-2">
+            Debug: createdInvoice = {createdInvoice ? 'exists' : 'null'}, isCreating = {isCreating.toString()}
+          </div>
+          
+          {/* Create Invoice Button */}
+          {!createdInvoice && (
+            <button
+              onClick={createInvoice}
+              disabled={isCreating}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white rounded-lg font-medium transition-colors"
+            >
+              {isCreating ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <CheckCircleIcon className="h-5 w-5" />
+                  Create Invoice
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Send Invoice Button */}
+          {createdInvoice && (
+            <div className="flex items-center gap-4">
+              {isInvoiceLocked() ? (
+                <button
+                  disabled
+                  className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-500 text-gray-300 rounded-lg font-medium cursor-not-allowed"
+                >
+                  <LockClosedIcon className="h-5 w-5" />
+                  Invoice Sent
+                </button>
+              ) : (
+                <button
+                  onClick={sendInvoice}
+                  disabled={isSending || !canSendInvoice()}
+                  className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 text-white rounded-lg font-medium transition-colors"
+                >
+                  {isSending ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <PaperAirplaneIcon className="h-5 w-5" />
+                      Send Invoice
+                    </>
+                  )}
+                </button>
+              )}
+
+              {/* Invoice Info */}
+              <div className="text-sm text-white/70">
+                <div>Invoice: {createdInvoice.invoice_number}</div>
+                <div>Status: <span className={`capitalize ${isInvoiceLocked() ? 'text-red-400' : 'text-green-400'}`}>
+                  {createdInvoice.status}
+                </span></div>
+              </div>
+            </div>
+          )}
+
+          {/* Test Button - Always Visible */}
+          <button
+            onClick={() => alert('Test button works!')}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
+          >
+            Test Button
+          </button>
+
+          {/* Back Button */}
+          <button
+            onClick={() => router.back()}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
+          >
+            Back to Lease
+          </button>
         </div>
       </div>
     </DashboardLayout>

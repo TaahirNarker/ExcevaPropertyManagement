@@ -22,7 +22,8 @@ import {
   CalendarIcon,
   UserIcon,
   HomeIcon,
-  PrinterIcon
+  PrinterIcon,
+  LockClosedIcon
 } from '@heroicons/react/24/outline';
 import { invoiceApi, formatCurrency, formatDate } from '../lib/api';
 import type { Invoice, InvoiceTemplate, InvoiceLineItem, PaginatedResponse } from '../lib/api';
@@ -504,14 +505,24 @@ const InvoiceManager: React.FC<InvoiceManagerProps> = ({ className = '' }) => {
                     
                     {invoice.status !== 'paid' && (
                       <>
-                        <button
-                          onClick={() => handleSendInvoice(invoice.id, 'email')}
-                          disabled={isSendingInvoice}
-                          className="p-1 text-purple-600 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded"
-                          title="Send via Email"
-                        >
-                          <PaperAirplaneIcon className="h-4 w-4" />
-                        </button>
+                        {invoiceApi.canSend(invoice) ? (
+                          <button
+                            onClick={() => handleSendInvoice(invoice.id, 'email')}
+                            disabled={isSendingInvoice}
+                            className="p-1 text-purple-600 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded"
+                            title="Send via Email"
+                          >
+                            <PaperAirplaneIcon className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <button
+                            disabled
+                            className="p-1 text-gray-400 cursor-not-allowed rounded"
+                            title={invoice.is_locked ? "Invoice is locked" : "Cannot send invoice"}
+                          >
+                            <LockClosedIcon className="h-4 w-4" />
+                          </button>
+                        )}
                         
                         <button
                           onClick={() => handleMarkAsPaid(invoice)}

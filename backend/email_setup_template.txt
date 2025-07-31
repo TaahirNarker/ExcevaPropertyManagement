@@ -1,0 +1,54 @@
+# ==============================================
+# EMAIL CONFIGURATION - ZOHO MAIL SETUP
+# ==============================================
+# Copy these settings to your .env file and update with your actual credentials
+
+# ZOHO Mail SMTP Configuration
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=smtp.zoho.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_USE_SSL=False
+
+# Your ZOHO Mail credentials
+EMAIL_HOST_USER=noreply@rentpilot.co.za
+EMAIL_HOST_PASSWORD=your-zoho-app-password-here
+
+# Default email addresses
+DEFAULT_FROM_EMAIL=noreply@rentpilot.co.za
+SERVER_EMAIL=noreply@rentpilot.co.za
+
+# Invoice-specific email settings
+INVOICE_FROM_EMAIL=noreply@rentpilot.co.za
+INVOICE_REPLY_TO_EMAIL=admin@rentpilot.co.za
+
+# Admin notification emails (comma-separated for multiple emails)
+PAYMENT_NOTIFICATION_EMAILS=admin@rentpilot.co.za
+ADMIN_BASE_URL=http://localhost:8000
+
+# ==============================================
+# ZOHO MAIL SETUP INSTRUCTIONS
+# ==============================================
+#
+# 1. Login to your ZOHO Mail account at https://mail.zoho.com
+# 2. Go to Settings > Security > App Passwords
+# 3. Generate a new app password for "Property Management System"
+# 4. Copy the generated password and replace "your-zoho-app-password-here" above
+# 5. Ensure your domain (rentpilot.co.za) is verified in ZOHO
+# 6. Test the configuration by running: python manage.py shell
+#    Then run: from django.core.mail import send_mail; send_mail('Test', 'Test message', 'noreply@rentpilot.co.za', ['your-email@domain.com'])
+#
+# IMPORTANT NOTES:
+# - Never use your regular ZOHO password for EMAIL_HOST_PASSWORD
+# - Always use an app-specific password for security
+# - Make sure TLS is enabled (EMAIL_USE_TLS=True)
+# - Port 587 is recommended for TLS, use 465 for SSL if needed
+# - Keep this file secure and never commit real passwords to git
+#
+# TROUBLESHOOTING:
+# - If emails aren't sending, check Django logs for error messages
+# - Verify your domain is properly configured in ZOHO
+# - Ensure the app password is correctly copied (no extra spaces)
+# - Test SMTP connection manually if needed
+#
+# ============================================== 

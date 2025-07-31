@@ -82,8 +82,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Prevent hydration mismatch
   if (!mounted) {
-    console.log('🎨 ThemeProvider not yet mounted, returning fallback');
-    return <div className="dark">{children}</div>;
+    console.log('\ud83c\udfa8 ThemeProvider not yet mounted, returning fallback');
+    // Provide context with default values to prevent errors during SSR/hydration
+    return (
+      <ThemeContext.Provider value={{
+        theme: 'dark',
+        toggleTheme: () => {},
+        setTheme: () => {},
+      }}>
+        <div className="dark">{children}</div>
+      </ThemeContext.Provider>
+    );
   }
 
   console.log('🎨 ThemeProvider rendering with theme:', theme);

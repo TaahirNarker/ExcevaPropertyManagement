@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment
+from .models import Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog
 from tenants.models import Lease, Tenant
 from properties.models import Property
 
@@ -47,12 +47,15 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'landlord', 'landlord_name', 'created_by', 'created_by_name',
             'subtotal', 'tax_rate', 'tax_amount', 'total_amount',
             'notes', 'email_subject', 'email_recipient', 'bank_info', 'extra_notes',
+            'is_locked', 'locked_at', 'locked_by', 'sent_at', 'sent_by',
+            'invoice_type', 'parent_invoice',
             'line_items', 'payments', 'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'invoice_number', 'subtotal', 'tax_amount', 'total_amount',
             'created_at', 'updated_at', 'lease_code', 'property_name', 'tenant_name',
-            'landlord_name', 'created_by_name', 'line_items', 'payments'
+            'landlord_name', 'created_by_name', 'line_items', 'payments',
+            'is_locked', 'locked_at', 'locked_by', 'sent_at', 'sent_by'
         ]
 
 
@@ -67,6 +70,7 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
             'id', 'invoice_number', 'title', 'issue_date', 'due_date', 'status',
             'lease', 'property', 'tenant', 'landlord', 'created_by',
             'tax_rate', 'notes', 'email_subject', 'email_recipient', 'bank_info', 'extra_notes',
+            'invoice_type', 'parent_invoice',
             'line_items', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'invoice_number', 'created_at', 'updated_at']
@@ -82,6 +86,14 @@ class InvoiceCreateUpdateSerializer(serializers.ModelSerializer):
         return invoice
     
     def update(self, instance, validated_data):
+        # Check if invoice is locked
+        if instance.is_locked:
+            raise serializers.ValidationError("Cannot update locked invoice")
+        
+        # Check if invoice can be edited
+        if not instance.can_edit():
+            raise serializers.ValidationError(f"Cannot edit invoice with status '{instance.get_status_display()}'")
+        
         line_items_data = validated_data.pop('line_items', [])
         
         # Update invoice fields
@@ -113,7 +125,8 @@ class InvoiceListSerializer(serializers.ModelSerializer):
         model = Invoice
         fields = [
             'id', 'invoice_number', 'title', 'issue_date', 'due_date', 'status', 'status_display',
-            'lease_code', 'property_name', 'tenant_name', 'total_amount', 'created_at'
+            'lease_code', 'property_name', 'tenant_name', 'total_amount', 'created_at',
+            'is_locked', 'invoice_type', 'parent_invoice'
         ]
 
 
@@ -154,4 +167,72 @@ class InvoiceSummarySerializer(serializers.ModelSerializer):
         return max(0, obj.total_amount - total_paid)
     
     def get_payment_count(self, obj):
-        return obj.payments.count() 
+        """Get count of payments for this invoice"""
+        return obj.payments.count()
+
+
+class InvoiceDetailSerializer(serializers.ModelSerializer):
+    """Detailed serializer for invoice with full information"""
+    
+    line_items = InvoiceLineItemSerializer(many=True, read_only=True)
+    payments = InvoicePaymentSerializer(many=True, read_only=True)
+    audit_logs = serializers.SerializerMethodField()
+    lease_code = serializers.CharField(source='lease.lease_code', read_only=True)
+    property_name = serializers.CharField(source='property.name', read_only=True)
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    landlord_name = serializers.CharField(source='landlord.get_full_name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    locked_by_name = serializers.CharField(source='locked_by.get_full_name', read_only=True)
+    sent_by_name = serializers.CharField(source='sent_by.get_full_name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    invoice_type_display = serializers.CharField(source='get_invoice_type_display', read_only=True)
+    
+    class Meta:
+        model = Invoice
+        fields = [
+            'id', 'invoice_number', 'title', 'issue_date', 'due_date', 'status', 'status_display',
+            'lease', 'lease_code', 'property', 'property_name', 'tenant', 'tenant_name',
+            'landlord', 'landlord_name', 'created_by', 'created_by_name',
+            'subtotal', 'tax_rate', 'tax_amount', 'total_amount',
+            'notes', 'email_subject', 'email_recipient', 'bank_info', 'extra_notes',
+            'is_locked', 'locked_at', 'locked_by', 'locked_by_name', 'sent_at', 'sent_by', 'sent_by_name',
+            'invoice_type', 'invoice_type_display', 'parent_invoice',
+            'line_items', 'payments', 'audit_logs', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'invoice_number', 'subtotal', 'tax_amount', 'total_amount',
+            'created_at', 'updated_at', 'lease_code', 'property_name', 'tenant_name',
+            'landlord_name', 'created_by_name', 'locked_by_name', 'sent_by_name',
+            'line_items', 'payments', 'audit_logs', 'status_display', 'invoice_type_display',
+            'is_locked', 'locked_at', 'locked_by', 'sent_at', 'sent_by'
+        ]
+    
+    def get_audit_logs(self, obj):
+        """Get audit logs for this invoice"""
+        logs = obj.audit_logs.all()[:10]  # Limit to last 10 logs
+        return InvoiceAuditLogSerializer(logs, many=True).data
+
+
+class InvoiceAuditLogSerializer(serializers.ModelSerializer):
+    """Serializer for invoice audit logs"""
+    
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
+    user_name = serializers.CharField(source='user.get_full_name', read_only=True)
+    timestamp_formatted = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = InvoiceAuditLog
+        fields = [
+            'id', 'action', 'action_display', 'description', 'user', 'user_name',
+            'timestamp', 'timestamp_formatted', 'details', 'field_changed',
+            'old_value', 'new_value', 'invoice_snapshot'
+        ]
+        read_only_fields = [
+            'id', 'action', 'action_display', 'description', 'user', 'user_name',
+            'timestamp', 'timestamp_formatted', 'details', 'field_changed',
+            'old_value', 'new_value', 'invoice_snapshot'
+        ]
+    
+    def get_timestamp_formatted(self, obj):
+        """Format timestamp for display"""
+        return obj.timestamp.strftime('%Y-%m-%d %H:%M:%S') 

@@ -1,0 +1,64 @@
+INVOICE {{ invoice.invoice_number }}
+===========================================
+
+Dear {{ invoice.tenant.name }},
+
+We hope this email finds you well. Please find attached your invoice for the period {{ invoice.issue_date|date:"F Y" }}.
+
+INVOICE DETAILS
+---------------
+Invoice Number: {{ invoice.invoice_number }}
+Issue Date: {{ invoice.issue_date|date:"F j, Y" }}
+Due Date: {{ invoice.due_date|date:"F j, Y" }}
+Property: {{ invoice.property.name }} - {{ invoice.property.address }}
+{% if invoice.lease.unit %}Unit: {{ invoice.lease.unit.unit_number }}{% endif %}
+
+TOTAL AMOUNT DUE: R {{ invoice.total_amount|floatformat:2 }}
+
+{% if payment_url %}
+ONLINE PAYMENT
+--------------
+Pay instantly with Bitcoin: {{ payment_url }}
+{% endif %}
+
+PAYMENT INSTRUCTIONS
+--------------------
+Please make payment by {{ invoice.due_date|date:"F j, Y" }} using one of the following methods:
+
+{% if payment_url %}
+Option 1: Online Payment (Recommended)
+Visit: {{ payment_url }}
+{% endif %}
+
+{% if invoice.bank_info %}
+{% if payment_url %}Option 2: {% endif %}Bank Transfer:
+{{ invoice.bank_info }}
+{% endif %}
+
+Payment Reference: {{ invoice.invoice_number }}
+
+{% if invoice.notes %}
+ADDITIONAL NOTES
+----------------
+{{ invoice.notes }}
+{% endif %}
+
+{% if days_until_due %}
+{% if days_until_due < 0 %}
+⚠️ PAYMENT OVERDUE: This invoice was due {{ days_until_due|abs }} day{{ days_until_due|abs|pluralize }} ago. 
+Please arrange payment immediately to avoid late fees.
+{% elif days_until_due <= 3 %}
+⏰ PAYMENT DUE SOON: This invoice is due in {{ days_until_due }} day{{ days_until_due|pluralize }}. 
+Please arrange payment to avoid late fees.
+{% endif %}
+{% endif %}
+
+---
+Thank you for your prompt payment.
+
+RentPilot Property Management
+Email: admin@rentpilot.co.za
+
+If you have any questions about this invoice, please don't hesitate to contact us.
+
+This is an automated email. Please do not reply to this email address. 

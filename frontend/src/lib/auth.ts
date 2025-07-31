@@ -8,7 +8,7 @@ import Cookies from 'js-cookie';
 import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
 
 // API Base URL - updated for production deployment
-const API_BASE_URL = process.env.NODE_ENV === 'production' 
+export const API_BASE_URL = process.env.NODE_ENV === 'production' 
   ? 'https://propman.exceva.capital/api'
   : 'http://127.0.0.1:8000/api';
 

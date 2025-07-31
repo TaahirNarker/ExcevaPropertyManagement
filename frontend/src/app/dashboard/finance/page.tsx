@@ -4,6 +4,19 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
+import { financeApi } from '@/lib/api';
+import {
+  generateFinancialOverviewPDF,
+  generateIncomeReportPDF,
+  generateExpenseReportPDF,
+  generateLandlordStatementPDF,
+  generateSupplierReportPDF,
+  generateFinancialOverviewXLSX,
+  generateIncomeReportXLSX,
+  generateExpenseReportXLSX,
+  generateLandlordStatementXLSX,
+  generateSupplierReportXLSX
+} from '@/utils/exportUtils';
 import { 
   BanknotesIcon, 
   CreditCardIcon, 
@@ -30,7 +43,8 @@ import {
   XMarkIcon,
   PhoneIcon,
   TruckIcon,
-  CurrencyDollarIcon
+  CurrencyDollarIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
 
 // Type definitions
@@ -122,12 +136,61 @@ export default function FinancePage() {
   const [supplierPayments, setSupplierPayments] = useState<SupplierPayment[]>([]);
   const [bankTransactions, setBankTransactions] = useState<BankTransaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState('');
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  
+  // Dropdown state management
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  const toggleDropdown = (dropdownId: string) => {
+    setActiveDropdown(activeDropdown === dropdownId ? null : dropdownId);
+  };
+
+  const closeDropdown = () => {
+    setActiveDropdown(null);
+  };
+
+  // Refresh financial data
+  const refreshFinancialData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch financial summary
+      const summary = await financeApi.getFinancialSummary();
+      setFinancialSummary(summary);
+      
+      // Fetch rental outstanding
+      const outstanding = await financeApi.getRentalOutstanding();
+      setRentalOutstanding(Array.isArray(outstanding) ? outstanding : []);
+      
+      // Fetch recent payments
+      const payments = await financeApi.getPayments();
+      setRecentPayments(Array.isArray(payments) ? payments : []);
+      
+      // Fetch landlord payments
+      const landlordPayments = await financeApi.getLandlordPayments();
+      setLandlordPayments(Array.isArray(landlordPayments) ? landlordPayments : []);
+      
+      // Fetch supplier payments
+      const supplierPayments = await financeApi.getSupplierPayments();
+      setSupplierPayments(Array.isArray(supplierPayments) ? supplierPayments : []);
+      
+      // Fetch bank transactions
+      const transactions = await financeApi.getBankTransactions();
+      setBankTransactions(Array.isArray(transactions) ? transactions : []);
+      
+    } catch (error) {
+      console.error('Error refreshing financial data:', error);
+      alert('Failed to refresh financial data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Mock data
   const mockFinancialSummary: FinancialSummary = {
@@ -363,16 +426,69 @@ export default function FinancePage() {
 
   // Initialize data
   useEffect(() => {
-    if (isAuthenticated) {
-      setFinancialSummary(mockFinancialSummary);
-      setRentalOutstanding(mockRentalOutstanding);
-      setRecentPayments(mockRecentPayments);
-      setLandlordPayments(mockLandlordPayments);
-      setSupplierPayments(mockSupplierPayments);
-      setBankTransactions(mockBankTransactions);
-      setLoading(false);
-    }
+    const fetchFinancialData = async () => {
+      if (isAuthenticated) {
+        try {
+          setLoading(true);
+          
+          // Fetch financial summary
+          const summary = await financeApi.getFinancialSummary();
+          console.log('Financial summary API response:', summary);
+          setFinancialSummary(summary);
+          
+          // Fetch rental outstanding
+          const outstanding = await financeApi.getRentalOutstanding();
+          setRentalOutstanding(Array.isArray(outstanding) ? outstanding : []);
+          
+          // Fetch recent payments
+          const payments = await financeApi.getPayments();
+          console.log('Payments API response:', payments);
+          setRecentPayments(Array.isArray(payments) ? payments : []);
+          
+          // Fetch landlord payments
+          const landlordPayments = await financeApi.getLandlordPayments();
+          setLandlordPayments(Array.isArray(landlordPayments) ? landlordPayments : []);
+          
+          // Fetch supplier payments
+          const supplierPayments = await financeApi.getSupplierPayments();
+          setSupplierPayments(Array.isArray(supplierPayments) ? supplierPayments : []);
+          
+          // Fetch bank transactions
+          const transactions = await financeApi.getBankTransactions();
+          setBankTransactions(Array.isArray(transactions) ? transactions : []);
+          
+        } catch (error) {
+          console.error('Error fetching financial data:', error);
+          setError('Failed to load financial data. Using mock data as fallback.');
+          // Fallback to mock data if API fails
+          setFinancialSummary(mockFinancialSummary);
+          setRentalOutstanding(mockRentalOutstanding);
+          setRecentPayments(mockRecentPayments);
+          setLandlordPayments(mockLandlordPayments);
+          setSupplierPayments(mockSupplierPayments);
+          setBankTransactions(mockBankTransactions);
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchFinancialData();
   }, [isAuthenticated]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (activeDropdown) {
+        setActiveDropdown(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [activeDropdown]);
 
   // Utility functions
   const formatCurrency = (amount: number) => {
@@ -416,6 +532,91 @@ export default function FinancePage() {
     }
   };
 
+  // Export functions with debugging
+  const handleExportOverviewPDF = () => {
+    console.log('handleExportOverviewPDF called');
+    console.log('financialSummary:', financialSummary);
+    console.log('rentalOutstanding:', rentalOutstanding);
+    console.log('recentPayments:', recentPayments);
+    
+    if (financialSummary) {
+      generateFinancialOverviewPDF(financialSummary, rentalOutstanding, recentPayments);
+    } else {
+      console.error('Financial summary is null or undefined');
+      alert('Financial data is not available. Please refresh the page and try again.');
+    }
+  };
+
+  const handleExportOverviewXLSX = () => {
+    console.log('handleExportOverviewXLSX called');
+    if (financialSummary) {
+      generateFinancialOverviewXLSX(financialSummary, rentalOutstanding, recentPayments);
+    } else {
+      console.error('Financial summary is null or undefined');
+      alert('Financial data is not available. Please refresh the page and try again.');
+    }
+  };
+
+  const handleExportIncomePDF = () => {
+    console.log('handleExportIncomePDF called');
+    console.log('rentalOutstanding:', rentalOutstanding);
+    generateIncomeReportPDF(rentalOutstanding);
+  };
+
+  const handleExportIncomeXLSX = () => {
+    console.log('handleExportIncomeXLSX called');
+    generateIncomeReportXLSX(rentalOutstanding);
+  };
+
+  const handleExportExpensesPDF = () => {
+    console.log('handleExportExpensesPDF called');
+    console.log('recentPayments:', recentPayments);
+    generateExpenseReportPDF(recentPayments);
+  };
+
+  const handleExportExpensesXLSX = () => {
+    console.log('handleExportExpensesXLSX called');
+    generateExpenseReportXLSX(recentPayments);
+  };
+
+  const handleExportCommissionsPDF = () => {
+    console.log('handleExportCommissionsPDF called');
+    console.log('landlordPayments:', landlordPayments);
+    generateLandlordStatementPDF(landlordPayments);
+  };
+
+  const handleExportCommissionsXLSX = () => {
+    console.log('handleExportCommissionsXLSX called');
+    generateLandlordStatementXLSX(landlordPayments);
+  };
+
+  const handleExportTransactionsPDF = () => {
+    console.log('handleExportTransactionsPDF called');
+    console.log('supplierPayments:', supplierPayments);
+    generateSupplierReportPDF(supplierPayments);
+  };
+
+  const handleExportTransactionsXLSX = () => {
+    console.log('handleExportTransactionsXLSX called');
+    generateSupplierReportXLSX(supplierPayments);
+  };
+
+  // Test function to verify PDF functionality
+  const testPDFGeneration = () => {
+    console.log('Testing basic PDF generation...');
+    try {
+      const doc = new (require('jspdf').default)();
+      doc.text('Test PDF Generation', 20, 20);
+      doc.text('If you see this PDF, the library is working correctly!', 20, 40);
+      doc.save('test-pdf.pdf');
+      console.log('Test PDF generated successfully!');
+      alert('Test PDF generated! Check your downloads folder.');
+    } catch (error) {
+      console.error('Test PDF generation failed:', error);
+      alert('PDF generation test failed: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
   // Modal functions
   const openModal = (type: string, item?: any) => {
     setModalType(type);
@@ -443,8 +644,9 @@ export default function FinancePage() {
   if (loading) {
     return (
       <DashboardLayout title="Finance">
-        <div className="flex items-center justify-center py-20">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mb-4"></div>
+          <p className="text-muted-foreground">Loading financial data...</p>
         </div>
       </DashboardLayout>
     );
@@ -453,6 +655,24 @@ export default function FinancePage() {
       return (
       <DashboardLayout title="Financial Management">
       <div className="p-6">
+        {/* Error Banner */}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+                <p className="text-red-400 text-sm">{error}</p>
+              </div>
+              <button 
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-300"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Tab Navigation */}
         <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border mb-6">
           <div className="flex space-x-1 p-1">
@@ -558,7 +778,28 @@ export default function FinancePage() {
 
             {/* Quick Actions */}
             <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
-              <h3 className="text-lg font-medium text-foreground mb-4">Quick Actions</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-foreground">Quick Actions</h3>
+                <button 
+                  onClick={refreshFinancialData}
+                  disabled={loading}
+                  className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white px-3 py-1 rounded-lg text-sm transition-colors"
+                >
+                  <ArrowPathIcon className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
+              </div>
+              
+              {/* Debug Test Button */}
+              <div className="mb-4">
+                <button 
+                  onClick={testPDFGeneration}
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm"
+                >
+                  🧪 Test PDF Generation
+                </button>
+                <span className="ml-2 text-xs text-muted-foreground">(Debug - Remove after testing)</span>
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <button 
                   onClick={() => openModal('recordPayment')}
@@ -574,10 +815,37 @@ export default function FinancePage() {
                   <DocumentTextIcon className="h-8 w-8 text-green-400 mb-2" />
                   <span className="text-sm text-foreground">Generate Invoice</span>
                 </button>
-                <button className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                  <ArrowDownTrayIcon className="h-8 w-8 text-purple-400 mb-2" />
-                  <span className="text-sm text-foreground">Export Report</span>
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => toggleDropdown('overview-export')}
+                    className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors w-full"
+                  >
+                    <ArrowDownTrayIcon className="h-8 w-8 text-purple-400 mb-2" />
+                    <span className="text-sm text-foreground">Export Report</span>
+                  </button>
+                  {activeDropdown === 'overview-export' && (
+                    <div className="absolute top-full left-0 mt-1 w-full bg-card border border-border rounded-lg shadow-lg z-50">
+                      <button 
+                        onClick={() => {
+                          handleExportOverviewPDF();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-t-lg"
+                      >
+                        📄 Export PDF
+                      </button>
+                      <button 
+                        onClick={() => {
+                          handleExportOverviewXLSX();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-b-lg"
+                      >
+                        📊 Export Excel
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
                   <ArrowUpTrayIcon className="h-8 w-8 text-orange-400 mb-2" />
                   <span className="text-sm text-foreground">Import Transactions</span>
@@ -651,7 +919,7 @@ export default function FinancePage() {
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {recentPayments.slice(0, 5).map((payment) => {
+                  {(recentPayments || []).slice(0, 5).map((payment) => {
                     const StatusIcon = getStatusIcon(payment.status);
                     return (
                       <div key={payment.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
@@ -683,7 +951,7 @@ export default function FinancePage() {
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {rentalOutstanding.slice(0, 5).map((rental) => (
+                  {(rentalOutstanding || []).slice(0, 5).map((rental) => (
                     <div key={rental.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                       <div className="flex items-center space-x-3">
                         <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
@@ -727,6 +995,37 @@ export default function FinancePage() {
                   <DocumentTextIcon className="h-5 w-5" />
                   <span>Generate Invoice</span>
                 </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => toggleDropdown('income-export')}
+                    className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <ArrowDownTrayIcon className="h-5 w-5" />
+                    <span>Export</span>
+                  </button>
+                  {activeDropdown === 'income-export' && (
+                    <div className="absolute top-full right-0 mt-1 w-40 bg-card border border-border rounded-lg shadow-lg z-50">
+                      <button 
+                        onClick={() => {
+                          handleExportIncomePDF();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-t-lg"
+                      >
+                        📄 Export PDF
+                      </button>
+                      <button 
+                        onClick={() => {
+                          handleExportIncomeXLSX();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-b-lg"
+                      >
+                        📊 Export Excel
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -874,10 +1173,37 @@ export default function FinancePage() {
                   <PlusIcon className="h-5 w-5" />
                   <span>Record Payment</span>
                 </button>
-                <button className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors">
-                  <ArrowDownTrayIcon className="h-5 w-5" />
-                  <span>Export</span>
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => toggleDropdown('expenses-export')}
+                    className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <ArrowDownTrayIcon className="h-5 w-5" />
+                    <span>Export</span>
+                  </button>
+                  {activeDropdown === 'expenses-export' && (
+                    <div className="absolute top-full right-0 mt-1 w-40 bg-card border border-border rounded-lg shadow-lg z-50">
+                      <button 
+                        onClick={() => {
+                          handleExportExpensesPDF();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-t-lg"
+                      >
+                        📄 Export PDF
+                      </button>
+                      <button 
+                        onClick={() => {
+                          handleExportExpensesXLSX();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-b-lg"
+                      >
+                        📊 Export Excel
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -960,10 +1286,37 @@ export default function FinancePage() {
                   <CreditCardIcon className="h-5 w-5" />
                   <span>Process Payment</span>
                 </button>
-                <button className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors">
-                  <DocumentTextIcon className="h-5 w-5" />
-                  <span>Generate Statement</span>
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => toggleDropdown('commissions-export')}
+                    className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <DocumentTextIcon className="h-5 w-5" />
+                    <span>Generate Statement</span>
+                  </button>
+                  {activeDropdown === 'commissions-export' && (
+                    <div className="absolute top-full right-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50">
+                      <button 
+                        onClick={() => {
+                          handleExportCommissionsPDF();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-t-lg"
+                      >
+                        📄 Generate PDF Statement
+                      </button>
+                      <button 
+                        onClick={() => {
+                          handleExportCommissionsXLSX();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-b-lg"
+                      >
+                        📊 Generate Excel Statement
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1031,9 +1384,39 @@ export default function FinancePage() {
                             >
                               <EyeIcon className="h-5 w-5" />
                             </button>
-                            <button className="text-purple-400 hover:text-purple-300" title="Generate Statement">
-                              <DocumentTextIcon className="h-5 w-5" />
-                            </button>
+                            <div className="relative">
+                              <button 
+                                onClick={() => toggleDropdown(`landlord-statement-${payment.id}`)}
+                                className="text-purple-400 hover:text-purple-300" 
+                                title="Generate Statement"
+                              >
+                                <DocumentTextIcon className="h-5 w-5" />
+                              </button>
+                              {activeDropdown === `landlord-statement-${payment.id}` && (
+                                <div className="absolute top-full right-0 mt-1 w-32 bg-card border border-border rounded-lg shadow-lg z-50">
+                                  <button 
+                                    onClick={() => {
+                                      console.log('Individual landlord PDF clicked for:', payment);
+                                      generateLandlordStatementPDF([payment]);
+                                      closeDropdown();
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted rounded-t-lg"
+                                  >
+                                    📄 PDF
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      console.log('Individual landlord Excel clicked for:', payment);
+                                      generateLandlordStatementXLSX([payment]);
+                                      closeDropdown();
+                                    }}
+                                    className="w-full px-3 py-2 text-left text-xs text-foreground hover:bg-muted rounded-b-lg"
+                                  >
+                                    📊 Excel
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -1068,6 +1451,37 @@ export default function FinancePage() {
                   <CreditCardIcon className="h-5 w-5" />
                   <span>Process Payment</span>
                 </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => toggleDropdown('transactions-export')}
+                    className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <ArrowDownTrayIcon className="h-5 w-5" />
+                    <span>Export</span>
+                  </button>
+                  {activeDropdown === 'transactions-export' && (
+                    <div className="absolute top-full right-0 mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-50">
+                      <button 
+                        onClick={() => {
+                          handleExportTransactionsPDF();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-t-lg"
+                      >
+                        📄 Export PDF Report
+                      </button>
+                      <button 
+                        onClick={() => {
+                          handleExportTransactionsXLSX();
+                          closeDropdown();
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-b-lg"
+                      >
+                        📊 Export Excel Report
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

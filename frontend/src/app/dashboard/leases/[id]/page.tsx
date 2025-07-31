@@ -23,12 +23,18 @@ import {
   ArrowDownTrayIcon,
   ChevronDownIcon,
   CheckCircleIcon,
+  CheckIcon,
   ClockIcon,
   CogIcon,
+  BoltIcon,
 } from "@heroicons/react/24/outline";
-import toast from "react-hot-toast";
+import { toast } from 'react-hot-toast';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { format, subMonths, addMonths } from 'date-fns';
+import { z } from 'zod';
+import { API_BASE_URL } from '@/lib/auth';  // Import API_BASE_URL from auth.ts
+import { authService } from '@/lib/auth';  // Import authService for token access
 
 // --- Mock Data Definitions ---
 
@@ -101,6 +107,134 @@ const mockLandlords = [
   { id: '2', name: 'Emma Williams', code: 'LAN000002', email: 'emma@realestate.co.za' },
 ];
 
+// Seeded random number generator for consistent SSR/client results
+class SeededRandom {
+  private seed: number;
+  
+  constructor(seed: number) {
+    this.seed = seed;
+  }
+  
+  next(): number {
+    this.seed = (this.seed * 9301 + 49297) % 233280;
+    return this.seed / 233280;
+  }
+}
+
+// Generate lease-specific transactions
+const getLeaseTransactions = (lease: Lease) => {
+  if (!lease) return [];
+  
+  const transactions: Array<{
+    id: string;
+    date: string;
+    description: string;
+    type: string;
+    amount: number;
+    balance: number;
+  }> = [];
+  
+  // Create transactions based on lease data
+  const monthlyRent = lease.monthly_rent;
+  const startDate = new Date(lease.start_date);
+  const currentDate = new Date();
+  
+  // Create seeded random generator based on lease ID for consistency
+  const rng = new SeededRandom(parseInt(lease.id) * 12345);
+  
+  // Generate monthly rent charges and payments from start date to current
+  let runningBalance = 0;
+  let transactionId = 1;
+  
+  for (let date = new Date(startDate); date <= currentDate; date.setMonth(date.getMonth() + 1)) {
+    const monthYear = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const dateStr = date.toISOString().split('T')[0];
+    
+    // Add rent charge on 1st of each month
+    runningBalance += monthlyRent;
+    transactions.push({
+      id: transactionId.toString(),
+      date: dateStr,
+      description: `Rent - ${monthYear}`,
+      type: 'charge',
+      amount: monthlyRent,
+      balance: runningBalance
+    });
+    transactionId++;
+    
+    // Add payment (usually 5-10 days later) for most months
+    const shouldAddPayment = rng.next() > 0.1; // 90% chance of payment
+    if (shouldAddPayment) {
+      const paymentDate = new Date(date);
+      paymentDate.setDate(Math.floor(rng.next() * 10) + 5); // 5-15 days later
+      
+      let paymentAmount = monthlyRent;
+      // Sometimes add late fees
+      if (rng.next() > 0.8) {
+        const lateFee = Math.floor(rng.next() * 500) + 200;
+        runningBalance += lateFee;
+        transactions.push({
+          id: transactionId.toString(),
+          date: paymentDate.toISOString().split('T')[0],
+          description: 'Late payment fee',
+          type: 'charge',
+          amount: lateFee,
+          balance: runningBalance
+        });
+        transactionId++;
+        paymentAmount += lateFee;
+      }
+      
+      runningBalance -= paymentAmount;
+      transactions.push({
+        id: transactionId.toString(),
+        date: paymentDate.toISOString().split('T')[0],
+        description: `Payment received - ${monthYear}`,
+        type: 'payment',
+        amount: -paymentAmount,
+        balance: runningBalance
+      });
+      transactionId++;
+    }
+    
+    // Occasionally add utility charges
+    if (rng.next() > 0.7) {
+      const utilityAmount = Math.floor(rng.next() * 1000) + 500;
+      const utilityDate = new Date(date);
+      utilityDate.setDate(Math.floor(rng.next() * 20) + 10);
+      
+      runningBalance += utilityAmount;
+      transactions.push({
+        id: transactionId.toString(),
+        date: utilityDate.toISOString().split('T')[0],
+        description: 'Utilities charge',
+        type: 'charge',
+        amount: utilityAmount,
+        balance: runningBalance
+      });
+      transactionId++;
+    }
+  }
+  
+  // Add security deposit at the beginning if this is lease 1
+  if (lease.id === '1') {
+    transactions.unshift({
+      id: '0',
+      date: startDate.toISOString().split('T')[0],
+      description: 'Security deposit received',
+      type: 'payment',
+      amount: -lease.deposit,
+      balance: -lease.deposit
+    });
+    
+    // Adjust all other balances
+    transactions.slice(1).forEach(t => t.balance -= lease.deposit);
+  }
+  
+  // Sort by date
+  return transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+};
+
 // --- Lease Detail Page Component ---
 
 export default function LeaseDetailPage() {
@@ -163,6 +297,41 @@ export default function LeaseDetailPage() {
     notes: '',
     showBankDetails: true
   });
+
+  // Current invoice tab state
+  const [issueDate, setIssueDate] = useState('2024-07-01');
+  const [dueDate, setDueDate] = useState('2024-07-31');
+  const [title, setTitle] = useState('Invoice for July 2024');
+  const [invoiceNumber, setInvoiceNumber] = useState('INV-202407');
+  const [hasInvoice, setHasInvoice] = useState(true);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [lineItems, setLineItems] = useState([
+    { 
+      description: 'Monthly Rent', 
+      category: 'Rent', 
+      quantity: 1, 
+      price: 12500, 
+      total: 12500 
+    },
+    { 
+      description: 'Utilities & Services', 
+      category: 'Utilities', 
+      quantity: 1, 
+      price: 850, 
+      total: 850 
+    },
+  ]);
+  const [fromDetails, setFromDetails] = useState('Your Company Name\nYour Address\nCity, State ZIP\nPhone: (123) 456-7890\nEmail: info@company.com');
+  const [toDetails, setToDetails] = useState('');
+  const [bankInfo, setBankInfo] = useState('');
+  const [notes, setNotes] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailRecipient, setEmailRecipient] = useState('');
+  const [extraNotes, setExtraNotes] = useState('');
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [status, setStatus] = useState('draft');
+  const invoiceRef = useRef<HTMLDivElement>(null);
 
   // Handle tab switching
   const handleTabClick = (tab: string) => setActiveTab(tab);
@@ -253,6 +422,203 @@ export default function LeaseDetailPage() {
     toast.success("Customize invoice - feature coming soon");
   };
 
+  // Financial Statement PDF Export Handler
+  const handleExportFinancialStatement = async () => {
+    console.log('Exporting Lease Statement PDF...');
+    
+    if (!lease) {
+      toast.error('Lease data not available');
+      return;
+    }
+    
+    try {
+      const doc = new jsPDF();
+      
+      // Get logo from localStorage (if saved from settings)
+      const savedLogo = localStorage.getItem('companyLogo');
+      
+      // Add logo if available
+      if (savedLogo) {
+        try {
+          doc.addImage(savedLogo, 'PNG', 20, 15, 40, 20);
+        } catch (logoError) {
+          console.warn('Could not add logo to PDF:', logoError);
+        }
+      }
+      
+      // Header - "Lease Statement" on the right
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(70, 130, 180); // Steel blue color
+      doc.text('Lease Statement', 140, 25);
+      
+      // Statement details on the right
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      doc.text('STATEMENT DATE', 140, 35);
+      doc.text(':', 175, 35);
+      doc.text(new Date().toLocaleDateString('en-GB', { 
+        day: '2-digit', 
+        month: 'long', 
+        year: 'numeric' 
+      }), 180, 35);
+      
+      doc.text('ACCOUNT NO.', 140, 42);
+      doc.text(':', 175, 42);
+      doc.text(lease.lease_code, 180, 42);
+      
+      // Statement to (Tenant details) - Left side
+      let yPos = 55;
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Statement to', 20, yPos);
+      
+      yPos += 8;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text(tenant ? tenant.name : lease.tenant_name, 20, yPos);
+      
+             // Tenant address (using sample address format)
+       yPos += 6;
+       doc.setFont('helvetica', 'normal');
+       doc.setFontSize(9);
+       // For now, using sample address format as shown in the image
+       // You can extend the tenant interface later to include full address
+       doc.text('Att: Prince Mokako', 20, yPos);
+       yPos += 4;
+       doc.text('Room 1 & 2', 20, yPos);
+       yPos += 4;
+       doc.text('92 Donkin St', 20, yPos);
+       yPos += 4;
+       doc.text('Beaufort West', 20, yPos);
+       yPos += 4;
+       doc.text('Beaufort West', 20, yPos);
+       yPos += 4;
+       doc.text('Western Cape', 20, yPos);
+       yPos += 4;
+       doc.text('6970', 20, yPos);
+      
+             // Property details
+       yPos += 15;
+       doc.setFont('helvetica', 'normal');
+       doc.setFontSize(10);
+       const propertyText = `Property: ${property ? property.name + ' - ' + lease.property_name : lease.property_name}`;
+       doc.text(propertyText, 20, yPos);
+      
+      // Financial summary boxes
+      yPos += 15;
+      
+      // Deposit held box (golden background)
+      doc.setFillColor(218, 165, 32); // Golden color
+      doc.rect(20, yPos, 95, 12, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.text('DEPOSIT HELD: ' + formatCurrency(lease.deposit), 25, yPos + 8);
+      
+      // Amount due box (golden background)
+      doc.rect(115, yPos, 95, 12, 'F');
+      const leaseTransactions = getLeaseTransactions(lease);
+      const amountDue = Math.max(0, leaseTransactions[leaseTransactions.length - 1]?.balance || 0);
+      doc.text('AMOUNT DUE: ' + formatCurrency(amountDue), 120, yPos + 8);
+      
+      // Reset text color
+      doc.setTextColor(0, 0, 0);
+      
+      // Transaction table
+      yPos += 25;
+      
+      // Table header with blue background
+      doc.setFillColor(70, 130, 180); // Steel blue
+      doc.rect(20, yPos, 170, 8, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text('DATE', 22, yPos + 6);
+      doc.text('REFERENCE', 45, yPos + 6);
+      doc.text('DESCRIPTION', 70, yPos + 6);
+      doc.text('DEBIT', 130, yPos + 6);
+      doc.text('CREDIT', 150, yPos + 6);
+      doc.text('BALANCE', 170, yPos + 6);
+      
+      yPos += 8;
+      
+      // Reset text color for table content
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      
+      // Use actual lease transaction data
+      const pdfTransactions = getLeaseTransactions(lease);
+      
+      pdfTransactions.forEach((transaction, index) => {
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = 30;
+        }
+        
+        // Alternate row colors
+        if (index % 2 === 0) {
+          doc.setFillColor(248, 248, 248);
+          doc.rect(20, yPos, 170, 6, 'F');
+        }
+        
+        doc.setFontSize(8);
+        // Format date
+        const formattedDate = new Date(transaction.date).toLocaleDateString('en-GB', { 
+          day: '2-digit', 
+          month: 'short', 
+          year: 'numeric' 
+        }).replace(' ', ' ');
+        doc.text(formattedDate, 22, yPos + 4);
+        doc.text('', 45, yPos + 4); // Reference (empty for now)
+        doc.text(transaction.description.substring(0, 35), 70, yPos + 4);
+        
+        // Display debit/credit based on transaction type
+        if (transaction.type === 'charge') {
+          doc.text(formatCurrency(transaction.amount), 130, yPos + 4);
+        } else {
+          doc.text('', 130, yPos + 4);
+        }
+        if (transaction.type === 'payment') {
+          doc.text(formatCurrency(Math.abs(transaction.amount)), 150, yPos + 4);
+        } else {
+          doc.text('', 150, yPos + 4);
+        }
+        doc.text(formatCurrency(transaction.balance), 170, yPos + 4);
+        
+        yPos += 6;
+      });
+      
+      // Footer with company details
+      yPos = 280; // Fixed position at bottom
+      doc.setFillColor(218, 165, 32); // Golden footer
+      doc.rect(0, yPos, 210, 20, 'F');
+      
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('Page 1 of 2', 180, yPos + 6);
+      
+      doc.setFontSize(9);
+      const footerText = 'Narker Property Group | 11 Commercial Street Cape Town Cape Town Western Cape';
+      doc.text(footerText, 105 - (footerText.length * 1.2), yPos + 12);
+      
+      const contactText = '0214626223 | info@narkerproperty.com | Vat No: 429023792';
+      doc.text(contactText, 105 - (contactText.length * 1.2), yPos + 16);
+      
+      console.log('PDF generated successfully, attempting to save...');
+      doc.save(`lease-statement-${lease.lease_code}.pdf`);
+      console.log('PDF saved successfully');
+      
+      toast.success('Lease Statement PDF downloaded successfully!');
+      
+    } catch (error) {
+      console.error('Error generating Lease Statement PDF:', error);
+      toast.error('Failed to generate PDF. Please try again.');
+    }
+  };
+
   if (!lease) {
     return (
       <DashboardLayout title="Lease Not Found">
@@ -284,6 +650,442 @@ export default function LeaseDetailPage() {
       maximumFractionDigits: 2,
     }).format(amount).replace('ZAR', 'R');
   };
+
+  // Month navigation function for Current Invoice tab
+  const navigateMonth = (direction: 'previous' | 'next') => {
+    if (isNavigating) return; // Prevent multiple clicks during navigation
+    
+    setIsNavigating(true);
+    const currentDate = new Date(issueDate);
+    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + (direction === 'next' ? 1 : -1), 1);
+    
+    // Auto-save current invoice before navigating (silent save)
+    if (hasInvoice) {
+      saveInvoice();
+    }
+    
+    // Determine if invoice exists for new month (more predictable pattern)
+    // Recent months (last 6 months) are more likely to have invoices
+    const now = new Date();
+    const monthsFromNow = (now.getFullYear() - newDate.getFullYear()) * 12 + (now.getMonth() - newDate.getMonth());
+    
+    // Only past 6 months and current month have invoices
+    const newMonthHasInvoice = monthsFromNow >= 0 && monthsFromNow <= 6;
+    
+    // Batch all state updates together for smoother rendering
+    const monthName = newDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const newInvoiceNumber = `INV-${newDate.getFullYear()}${String(newDate.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Update all states in one batch
+    const updates = () => {
+      // Fix timezone issue - use local date format instead of ISO string
+      const year = newDate.getFullYear();
+      const month = String(newDate.getMonth() + 1).padStart(2, '0');
+      const day = String(newDate.getDate()).padStart(2, '0');
+      const newDateString = `${year}-${month}-${day}`;
+      
+
+      
+      setIssueDate(newDateString);
+      setHasInvoice(newMonthHasInvoice);
+      
+      if (newMonthHasInvoice) {
+        // Load realistic invoice data for existing months
+        setTitle(`Invoice for ${monthName}`);
+        setInvoiceNumber(newInvoiceNumber);
+        // Use seeded random based on month/year for consistent utilities amount
+        const monthSeed = newDate.getFullYear() * 12 + newDate.getMonth();
+        const monthRng = new SeededRandom(monthSeed);
+        const utilitiesAmount = Math.floor(monthRng.next() * 800) + 400; // Random utilities 400-1200
+        setLineItems([
+          { 
+            description: 'Monthly Rent', 
+            category: 'Rent', 
+            quantity: 1, 
+            price: lease.monthly_rent, 
+            total: lease.monthly_rent 
+          },
+          { 
+            description: 'Utilities & Services', 
+            category: 'Utilities', 
+            quantity: 1, 
+            price: utilitiesAmount, 
+            total: utilitiesAmount 
+          },
+        ]);
+        setFromDetails('Your Company Name\nYour Address\nCity, State ZIP\nPhone: (123) 456-7890\nEmail: info@company.com');
+        setToDetails(`${tenant?.name || lease.tenant_name}\n${property?.address || 'Property Address'}`);
+        setBankInfo('Bank: First National Bank\nAccount Name: Property Management\nAccount Number: 12345678901\nBranch Code: 250655');
+        setNotes('Payment due within 30 days.');
+      } else {
+        // Reset for future months (no invoice exists)
+        setTitle(`Invoice for ${monthName}`);
+        setInvoiceNumber(newInvoiceNumber);
+        setLineItems([
+          { 
+            description: 'Monthly Rent', 
+            category: 'Rent', 
+            quantity: 1, 
+            price: lease.monthly_rent, 
+            total: lease.monthly_rent 
+          }
+        ]);
+        setFromDetails('Your Company Name\nYour Address\nCity, State ZIP\nPhone: (123) 456-7890\nEmail: info@company.com');
+        setToDetails(`${tenant?.name || lease.tenant_name}\n${property?.address || 'Property Address'}`);
+        setBankInfo('');
+        setNotes('');
+      }
+    };
+    
+    // Add slight delay for smooth transition with error handling
+    setTimeout(() => {
+      try {
+        updates();
+      } catch (error) {
+        console.error('Navigation error:', error);
+      } finally {
+        setIsNavigating(false);
+      }
+    }, 150);
+  };
+
+  // Auto-save function (silent)
+  const saveInvoice = () => {
+    // Mock save functionality - silent save during navigation
+    console.log('Invoice auto-saved for month:', new Date(issueDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+  };
+
+  // Totals
+  const subtotal = lineItems.reduce((sum, item) => sum + (item.total || 0), 0);
+  const taxRate = 10; // 10% VAT as shown in template
+  const tax = subtotal * (taxRate / 100);
+  const total = subtotal + tax;
+
+  // Create Bitcoin Lightning invoice for current month's rent
+  const createBitcoinInvoice = async () => {
+    try {
+      setDownloading(true);
+      
+      // Get Strike API settings from localStorage if available
+      const strikeApiKey = localStorage.getItem('strikeApiKey');
+      const strikeWebhookSecret = localStorage.getItem('strikeWebhookSecret'); 
+      const paymentNotificationEmail = localStorage.getItem('paymentNotificationEmail');
+      
+      const requestBody: any = {
+        tenant_id: lease.tenant_code,
+        amount: total.toFixed(2),
+        invoice_month: new Date(issueDate).toISOString().slice(0, 7), // Format: YYYY-MM
+        description: `${title} - ${tenant?.name || lease.tenant_name}`
+      };
+      
+      // Include Strike settings if configured
+      if (strikeApiKey) {
+        requestBody.strike_api_key = strikeApiKey;
+      }
+      if (strikeWebhookSecret) {
+        requestBody.strike_webhook_secret = strikeWebhookSecret;
+      }
+      if (paymentNotificationEmail) {
+        requestBody.payment_notification_email = paymentNotificationEmail;
+      }
+      
+      const response = await fetch(`${API_BASE_URL}/payments/create-invoice/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authService.getAccessToken()}`,
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const invoice = await response.json();
+      const paymentUrl = `${window.location.origin}/pay/${lease.tenant_code}/invoice/${invoice.id}`;
+      
+      toast.success('Bitcoin payment invoice created! Payment link ready.');
+      return paymentUrl;
+      
+    } catch (error) {
+      console.error('Error creating Bitcoin invoice:', error);
+      toast.error('Failed to create Bitcoin payment option');
+      return null;
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // PDF download handler
+  const handleDownloadPDF = async () => {
+    console.log('Starting PDF download...');
+    console.log('Invoice ref current:', invoiceRef.current);
+    
+    if (!invoiceRef.current) {
+      console.error('Invoice ref is not available');
+      alert('PDF element not found. Please try again.');
+      return;
+    }
+    
+    setDownloading(true);
+    
+    try {
+      // Make the element visible temporarily for capture
+      const element = invoiceRef.current;
+      const originalStyle = element.style.cssText;
+      
+      element.style.position = 'fixed';
+      element.style.left = '0';
+      element.style.top = '0';
+      element.style.visibility = 'visible';
+      element.style.zIndex = '9999';
+      
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        width: 794,
+        height: 1123,
+        ignoreElements: (el) => {
+          return el.tagName === 'SCRIPT' || el.tagName === 'STYLE';
+        }
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      
+      const filename = `invoice_${invoiceNumber}_${new Date(issueDate).toLocaleDateString('en-GB').replace(/\//g, '-')}.pdf`;
+      pdf.save(filename);
+      
+      // Restore original styling
+      element.style.cssText = originalStyle;
+      
+      console.log('PDF downloaded successfully!');
+      toast.success('Invoice PDF downloaded successfully!');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Ensure styling is restored even on error
+      if (invoiceRef.current) {
+        invoiceRef.current.style.position = 'absolute';
+        invoiceRef.current.style.left = '-9999px';
+        invoiceRef.current.style.visibility = 'hidden';
+      }
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Simple PDF generation without html2canvas (fallback)  
+  const handleDownloadSimplePDF = async () => {
+    console.log('Starting professional PDF generation...');
+    setDownloading(true);
+    
+    // Generate Bitcoin payment URL for PDF
+    const bitcoinPaymentUrl = await createBitcoinInvoice();
+    
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      let yPos = 20;
+      
+      // Logo section (dark rectangle)
+      doc.setFillColor(64, 64, 64); // Dark gray
+      doc.rect(20, yPos, 40, 25, 'F');
+      doc.setTextColor(255, 255, 255); // White text
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('logo', 40, yPos + 16, { align: 'center' });
+      
+      // Company info section
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text('To', 70, yPos + 5);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(tenant?.name || lease.tenant_name, 70, yPos + 12);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Phone: 07790 046362', 70, yPos + 18);
+      doc.text(`Address: ${property?.address || 'Unit 2A, Property Address'}`, 70, yPos + 22);
+      doc.text('City Goes Here, 8001', 70, yPos + 26);
+      
+      yPos += 40;
+      
+      // Summary box (light gray)
+      doc.setFillColor(240, 240, 240);
+      doc.rect(20, yPos, pageWidth - 40, 15, 'F');
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Date', 30, yPos + 6);
+      doc.text('Total Due:', 80, yPos + 6);
+      doc.text('Account Net', 130, yPos + 6);
+      doc.setFont('helvetica', 'normal');
+      doc.text(new Date(issueDate).toLocaleDateString('en-GB'), 30, yPos + 10);
+      doc.text(`$${formatCurrency(total)}`, 80, yPos + 10);
+      doc.text(`$${formatCurrency(total)}`, 130, yPos + 10);
+      
+      yPos += 25;
+      
+      // Invoice title and number
+      doc.setFontSize(28);
+      doc.setFont('helvetica', 'bold');
+      doc.text('INVOICE', 20, yPos);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Invoice No: ${invoiceNumber}`, pageWidth - 20, yPos, { align: 'right' });
+      
+      yPos += 20;
+      
+      // Table header
+      doc.setFillColor(64, 64, 64);
+      doc.rect(20, yPos, pageWidth - 40, 10, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ITEM DESCRIPTION', 25, yPos + 6);
+      doc.text('UNIT PRICE', 100, yPos + 6, { align: 'right' });
+      doc.text('QTY', 120, yPos + 6, { align: 'center' });
+      doc.text('TOTAL', pageWidth - 25, yPos + 6, { align: 'right' });
+      
+      yPos += 10;
+      
+      // Table rows
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      
+      lineItems.filter(item => item.description.trim() !== '').forEach((item, idx) => {
+        const bgColor = idx % 2 === 0 ? [245, 245, 245] : [255, 255, 255];
+        doc.setFillColor(bgColor[0], bgColor[1], bgColor[2]);
+        doc.rect(20, yPos, pageWidth - 40, 15, 'F');
+        
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text(item.description, 25, yPos + 6);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        doc.text(item.category || 'Service description', 25, yPos + 10);
+        
+        doc.setFontSize(8);
+        doc.text(`$${formatCurrency(item.price)}`, 100, yPos + 8, { align: 'right' });
+        doc.text(item.quantity.toString(), 120, yPos + 8, { align: 'center' });
+        doc.text(`$${formatCurrency(item.total)}`, pageWidth - 25, yPos + 8, { align: 'right' });
+        
+        yPos += 15;
+      });
+      
+      yPos += 10;
+      
+      // Bottom section - Payment method and summary
+      const bottomY = yPos;
+      
+      // Payment method (left side)
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Payment Method', 25, bottomY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(bankInfo ? bankInfo.split('\n').slice(0, 2).join('\n') : 'Bank transfer details available on request', 25, bottomY + 6, { maxWidth: 80 });
+      
+      // Bitcoin payment option
+      if (bitcoinPaymentUrl) {
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(255, 140, 0); // Orange color for Bitcoin
+        doc.text('⚡ Pay with Bitcoin', 25, bottomY + 15);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(0, 0, 255); // Blue color for URL
+        doc.textWithLink('Click here to pay with Bitcoin Lightning', 25, bottomY + 20, { url: bitcoinPaymentUrl });
+        doc.setTextColor(0, 0, 0); // Reset to black
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Bank Transfer • Cash • Cheque • Bitcoin', 25, bottomY + 26);
+      } else {
+        doc.setFont('helvetica', 'bold');
+        doc.text('Bank Transfer • Cash • Cheque', 25, bottomY + 15);
+      }
+      
+      // Summary (right side)
+      const summaryX = 130;
+      doc.setFillColor(240, 240, 240);
+      doc.rect(summaryX, bottomY, 60, 8, 'F');
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Sub Total', summaryX + 2, bottomY + 5);
+      doc.text(`$${formatCurrency(subtotal)}`, summaryX + 58, bottomY + 5, { align: 'right' });
+      
+      doc.text('Tax Vat 10%', summaryX + 2, bottomY + 12);
+      doc.text(`$${formatCurrency(tax)}`, summaryX + 58, bottomY + 12, { align: 'right' });
+      
+      doc.setFillColor(64, 64, 64);
+      doc.rect(summaryX, bottomY + 15, 60, 10, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('GRAND TOTAL', summaryX + 2, bottomY + 22);
+      doc.text(`$${formatCurrency(total)}`, summaryX + 58, bottomY + 22, { align: 'right' });
+      
+      // Footer section
+      const footerY = bottomY + 35;
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Terms:', 25, footerY);
+      doc.setFont('helvetica', 'normal');
+      doc.text(notes || 'Payment due within 30 days of invoice date.\nLate payments may incur additional charges.', 25, footerY + 5, { maxWidth: 80 });
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('Contact Us', 25, footerY + 20);
+      doc.setFont('helvetica', 'normal');
+      doc.text('📍 Property Management Office', 25, footerY + 25);
+      doc.text('📞 +27 82 123 4567', 25, footerY + 29);
+      doc.text('✉ info@propertymanagement.co.za', 25, footerY + 33);
+      
+      // Right side - Signature and Thank you
+      const rightX = 130;
+      doc.setDrawColor(0, 0, 0);
+      doc.line(rightX, footerY + 10, rightX + 40, footerY + 10); // Signature line
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('PROPERTY MANAGER', rightX + 20, footerY + 15, { align: 'center' });
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Manager', rightX + 20, footerY + 19, { align: 'center' });
+      
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('THANK YOU FOR', rightX + 20, footerY + 28, { align: 'center' });
+      doc.text('YOUR BUSINESS', rightX + 20, footerY + 33, { align: 'center' });
+      
+      const filename = `invoice_${invoiceNumber}_${new Date(issueDate).toLocaleDateString('en-GB').replace(/\//g, '-')}.pdf`;
+      doc.save(filename);
+      
+      console.log('Professional PDF generated successfully!');
+      toast.success('Professional invoice PDF downloaded successfully!');
+    } catch (error) {
+      console.error('Error generating professional PDF:', error);
+      alert(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  // Status options
+  const STATUS_OPTIONS = [
+    { value: 'draft', label: 'Draft', color: 'text-gray-500', icon: PencilIcon },
+    { value: 'sent', label: 'Sent', color: 'text-blue-500', icon: ArrowRightIcon },
+    { value: 'paid', label: 'Paid', color: 'text-green-500', icon: CheckIcon },
+    { value: 'overdue', label: 'Overdue', color: 'text-red-500', icon: ExclamationTriangleIcon },
+  ];
 
   // --- Main Render ---
   return (
@@ -350,7 +1152,10 @@ export default function LeaseDetailPage() {
             <div className="flex flex-col items-start justify-center">
               <div className="text-xs text-muted-foreground/70 mb-1">Total Due</div>
               <div className="flex items-center text-lg font-semibold text-white mb-2">
-                <BanknotesIcon className="h-5 w-5 mr-2 text-blue-400" /> {formatCurrency(calculateTotal())}
+                <BanknotesIcon className="h-5 w-5 mr-2 text-blue-400" /> {formatCurrency((() => {
+                  const transactions = getLeaseTransactions(lease);
+                  return Math.max(0, transactions[transactions.length - 1]?.balance || 0);
+                })())}
               </div>
               <div className="text-muted-foreground/70 text-xs mb-1">Rental: {formatCurrency(lease.monthly_rent)} monthly</div>
               <div className="text-muted-foreground/70 text-xs">Rent due: On the 1st</div>
@@ -542,31 +1347,62 @@ export default function LeaseDetailPage() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-white">Financial Statement</h3>
                   <div className="flex space-x-2">
-                    <button className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20">
+                    <button 
+                      onClick={handleExportFinancialStatement}
+                      className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
+                    >
                       <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
                       Export PDF
+                    </button>
+                    <button 
+                      onClick={() => {
+                        console.log('Debug: Testing Lease Statement PDF Export');
+                        console.log('Lease data:', lease);
+                        console.log('Tenant data:', tenant);
+                        console.log('Property data:', property);
+                        const savedLogo = localStorage.getItem('companyLogo');
+                        console.log('Company logo available:', savedLogo ? 'Yes' : 'No');
+                        if (savedLogo) {
+                          console.log('Logo data length:', savedLogo.length);
+                        }
+                        handleExportFinancialStatement();
+                      }}
+                      className="inline-flex items-center px-3 py-2 border border-red-500 rounded-md text-sm font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20"
+                    >
+                      🧪 Test Export
                     </button>
                   </div>
                 </div>
                 
                 {/* Financial Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                  <div className="bg-white/5 border border-white/20 rounded-lg p-4 text-center">
-                    <p className="text-muted-foreground text-sm mb-1">Total Charged</p>
-                    <p className="text-xl font-bold text-white">{formatCurrency(15000)}</p>
-                  </div>
-                  <div className="bg-white/5 border border-white/20 rounded-lg p-4 text-center">
-                    <p className="text-muted-foreground text-sm mb-1">Total Paid</p>
-                    <p className="text-xl font-bold text-green-400">{formatCurrency(12000)}</p>
-                  </div>
-                  <div className="bg-white/5 border border-white/20 rounded-lg p-4 text-center">
-                    <p className="text-muted-foreground text-sm mb-1">Outstanding</p>
-                    <p className="text-xl font-bold text-red-400">{formatCurrency(3000)}</p>
-                  </div>
-                  <div className="bg-white/5 border border-white/20 rounded-lg p-4 text-center">
-                    <p className="text-muted-foreground text-sm mb-1">Deposit Held</p>
-                    <p className="text-xl font-bold text-purple-400">{formatCurrency(lease.deposit)}</p>
-                  </div>
+                  {(() => {
+                    const transactions = getLeaseTransactions(lease);
+                    const totalCharged = transactions.filter(t => t.type === 'charge').reduce((sum, t) => sum + t.amount, 0);
+                    const totalPaid = Math.abs(transactions.filter(t => t.type === 'payment').reduce((sum, t) => sum + t.amount, 0));
+                    const outstanding = Math.max(0, transactions[transactions.length - 1]?.balance || 0);
+                    
+                    return (
+                      <>
+                        <div className="bg-white/5 border border-white/20 rounded-lg p-4 text-center">
+                          <p className="text-muted-foreground text-sm mb-1">Total Charged</p>
+                          <p className="text-xl font-bold text-white">{formatCurrency(totalCharged)}</p>
+                        </div>
+                        <div className="bg-white/5 border border-white/20 rounded-lg p-4 text-center">
+                          <p className="text-muted-foreground text-sm mb-1">Total Paid</p>
+                          <p className="text-xl font-bold text-green-400">{formatCurrency(totalPaid)}</p>
+                        </div>
+                        <div className="bg-white/5 border border-white/20 rounded-lg p-4 text-center">
+                          <p className="text-muted-foreground text-sm mb-1">Outstanding</p>
+                          <p className="text-xl font-bold text-red-400">{formatCurrency(outstanding)}</p>
+                        </div>
+                        <div className="bg-white/5 border border-white/20 rounded-lg p-4 text-center">
+                          <p className="text-muted-foreground text-sm mb-1">Deposit Held</p>
+                          <p className="text-xl font-bold text-purple-400">{formatCurrency(lease.deposit)}</p>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Transaction History */}
@@ -576,17 +1412,8 @@ export default function LeaseDetailPage() {
                   </div>
                   
                   <div className="divide-y divide-white/10">
-                    {/* Sample transactions - in real app, these would come from API */}
-                    {[
-                      { id: '1', date: '2024-01-01', description: 'Rent - January 2024', type: 'charge', amount: 12000, balance: 12000 },
-                      { id: '2', date: '2024-01-05', description: 'Payment received', type: 'payment', amount: -12000, balance: 0 },
-                      { id: '3', date: '2024-02-01', description: 'Rent - February 2024', type: 'charge', amount: 12000, balance: 12000 },
-                      { id: '4', date: '2024-02-03', description: 'Late payment fee', type: 'charge', amount: 500, balance: 12500 },
-                      { id: '5', date: '2024-02-10', description: 'Payment received', type: 'payment', amount: -12500, balance: 0 },
-                      { id: '6', date: '2024-03-01', description: 'Rent - March 2024', type: 'charge', amount: 12000, balance: 12000 },
-                      { id: '7', date: '2024-03-15', description: 'Utilities charge', type: 'charge', amount: 1500, balance: 13500 },
-                      { id: '8', date: '2024-03-20', description: 'Partial payment', type: 'payment', amount: -10000, balance: 3500 },
-                    ].map((transaction) => (
+                    {/* Lease-specific transactions */}
+                    {getLeaseTransactions(lease).map((transaction) => (
                       <div key={transaction.id} className="px-4 py-3 hover:bg-white/5 transition-colors">
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
@@ -618,7 +1445,511 @@ export default function LeaseDetailPage() {
 
             {/* Current Invoice Tab */}
             {activeFinancialTab === "Current invoice" && (
-              <InvoiceCreationForm lease={lease} tenant={tenant} landlord={landlord} property={property} />
+              <div className="space-y-6">
+                {/* Header with Month Navigation */}
+                <div className={`bg-white/10 border border-white/20 rounded-lg p-6 transition-opacity duration-200 ${isNavigating ? 'opacity-50' : 'opacity-100'}`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-white">{title}</h3>
+                    <div className="flex items-center space-x-2">
+                      <button 
+                        onClick={() => navigateMonth('previous')}
+                        disabled={isNavigating}
+                        className={`p-2 rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${isNavigating ? 'animate-pulse' : ''}`}
+                        title="Previous Month"
+                      >
+                        <ArrowLeftIcon className="h-5 w-5" />
+                      </button>
+                      <span className="text-white font-medium min-w-[120px] text-center">
+                        {new Date(issueDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                      </span>
+                      <button 
+                        onClick={() => navigateMonth('next')}
+                        disabled={isNavigating}
+                        className={`p-2 rounded-lg bg-white/10 border border-white/20 text-white hover:bg-white/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${isNavigating ? 'animate-pulse' : ''}`}
+                        title="Next Month"
+                      >
+                        <ArrowRightIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Loading Overlay */}
+                  {isNavigating && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/10 rounded-lg">
+                      <div className="flex items-center space-x-2 text-white">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                        <span>Loading...</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {hasInvoice ? (
+                    <div className="space-y-6">
+                      {/* Status and Actions */}
+                      <div className="flex items-center justify-between">
+                        <div className="relative">
+                          <button 
+                            onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                            className="flex items-center space-x-2 px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
+                          >
+                            <span className="capitalize">{status}</span>
+                            <ChevronDownIcon className="h-4 w-4" />
+                          </button>
+                          {/* Download button next to status */}
+                          <button
+                            onClick={handleDownloadPDF}
+                            disabled={downloading}
+                            className="flex items-center px-3 py-2 border border-green-500 rounded-md text-sm font-medium text-green-500 bg-green-500/10 hover:bg-green-500/20 transition-colors disabled:opacity-50 ml-2"
+                            title="Download PDF"
+                          >
+                            <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                            {downloading ? 'Generating...' : 'Download'}
+                          </button>
+                          <button 
+                            onClick={handleDownloadSimplePDF}
+                            disabled={downloading}
+                            className="flex items-center px-3 py-2 border border-blue-500 rounded-md text-sm font-medium text-blue-500 bg-blue-500/10 hover:bg-blue-500/20 transition-colors disabled:opacity-50 ml-2"
+                            title="Download Simple PDF (Fallback)"
+                          >
+                            <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                            Professional PDF
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const bitcoinPaymentUrl = await createBitcoinInvoice();
+                              if (bitcoinPaymentUrl) {
+                                window.open(bitcoinPaymentUrl, '_blank');
+                              }
+                            }}
+                            disabled={downloading}
+                            className="flex items-center px-3 py-2 border border-orange-500 rounded-md text-sm font-medium text-orange-500 bg-orange-500/10 hover:bg-orange-500/20 transition-colors disabled:opacity-50 ml-2"
+                            title="Pay with Bitcoin Lightning"
+                          >
+                            <BoltIcon className="h-4 w-4 mr-2" />
+                            Pay with Bitcoin
+                          </button>
+
+                          {showStatusDropdown && (
+                            <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
+                              {STATUS_OPTIONS.map(opt => (
+                                <div
+                                  key={opt.value}
+                                  className={`flex items-center px-4 py-2 cursor-pointer hover:bg-muted ${status === opt.value ? 'bg-muted' : ''}`}
+                                  onClick={() => { setStatus(opt.value); setShowStatusDropdown(false); }}
+                                >
+                                  <span className={`mr-2 ${opt.color}`}>{React.createElement(opt.icon, { className: 'h-5 w-5' })}</span>
+                                  {opt.label}
+                                </div>
+                              ))}
+                              <div className="border-t border-gray-200">
+                                <button className="flex items-center px-4 py-2 w-full text-xs text-blue-500 hover:bg-muted">
+                                  <CogIcon className="h-4 w-4 mr-2" /> Set default state
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Invoice Info */}
+                      <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/10 border border-white/20 rounded-lg p-6 transition-opacity duration-200 ${isNavigating ? 'opacity-50' : 'opacity-100'}`}>
+                        <div>
+                          <label className="block text-muted-foreground/70 text-sm mb-2">Issue Date</label>
+                          <input 
+                            type="date" 
+                            value={issueDate} 
+                            onChange={e => setIssueDate(e.target.value)}
+                            className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-muted-foreground/70 text-sm mb-2">Due Date</label>
+                          <input 
+                            type="date" 
+                            value={dueDate} 
+                            onChange={e => setDueDate(e.target.value)}
+                            className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-muted-foreground/70 text-sm mb-2">Invoice Number</label>
+                          <input 
+                            type="text" 
+                            value={invoiceNumber} 
+                            onChange={e => setInvoiceNumber(e.target.value)}
+                            className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white"
+                          />
+                        </div>
+                      </div>
+
+                      {/* From/To Details */}
+                      <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 transition-opacity duration-200 ${isNavigating ? 'opacity-50' : 'opacity-100'}`}>
+                        <div className="bg-white/10 border border-white/20 rounded-lg p-4">
+                          <label className="block text-muted-foreground/70 text-sm mb-2">From</label>
+                          <textarea 
+                            className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white min-h-[100px]" 
+                            value={fromDetails} 
+                            onChange={e => setFromDetails(e.target.value)}
+                            placeholder="Your company details"
+                          />
+                        </div>
+                        <div className="bg-white/10 border border-white/20 rounded-lg p-4">
+                          <label className="block text-muted-foreground/70 text-sm mb-2">To</label>
+                          <textarea 
+                            className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white min-h-[100px]" 
+                            value={toDetails} 
+                            onChange={e => setToDetails(e.target.value)}
+                            placeholder="Customer details"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Line Items */}
+                      <div className={`bg-white/10 border border-white/20 rounded-lg p-6 transition-opacity duration-200 ${isNavigating ? 'opacity-50' : 'opacity-100'}`}>
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-lg font-medium text-white">Items</h4>
+                          <button 
+                            onClick={() => setLineItems([...lineItems, { description: '', category: '', quantity: 1, price: 0, total: 0 }])}
+                            className="flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm"
+                          >
+                            <PlusIcon className="h-4 w-4 mr-2" />
+                            Add Item
+                          </button>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          {lineItems.map((item, index) => (
+                            <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-3 p-3 bg-white/5 rounded-lg">
+                              <div className="md:col-span-2">
+                                <input 
+                                  type="text" 
+                                  placeholder="Description" 
+                                  value={item.description}
+                                  onChange={e => {
+                                    const newItems = [...lineItems];
+                                    newItems[index].description = e.target.value;
+                                    setLineItems(newItems);
+                                  }}
+                                  className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white text-sm"
+                                />
+                              </div>
+                              <div>
+                                <input 
+                                  type="text" 
+                                  placeholder="Category" 
+                                  value={item.category}
+                                  onChange={e => {
+                                    const newItems = [...lineItems];
+                                    newItems[index].category = e.target.value;
+                                    setLineItems(newItems);
+                                  }}
+                                  className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white text-sm"
+                                />
+                              </div>
+                              <div>
+                                <input 
+                                  type="number" 
+                                  placeholder="Qty" 
+                                  value={item.quantity}
+                                  onChange={e => {
+                                    const newItems = [...lineItems];
+                                    newItems[index].quantity = parseInt(e.target.value) || 1;
+                                    newItems[index].total = newItems[index].quantity * newItems[index].price;
+                                    setLineItems(newItems);
+                                  }}
+                                  className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white text-sm"
+                                />
+                              </div>
+                              <div>
+                                <input 
+                                  type="number" 
+                                  placeholder="Price" 
+                                  value={item.price}
+                                  onChange={e => {
+                                    const newItems = [...lineItems];
+                                    newItems[index].price = parseFloat(e.target.value) || 0;
+                                    newItems[index].total = newItems[index].quantity * newItems[index].price;
+                                    setLineItems(newItems);
+                                  }}
+                                  className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white text-sm"
+                                />
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-white font-medium">{item.total.toFixed(2)}</span>
+                                {lineItems.length > 1 && (
+                                  <button 
+                                    onClick={() => setLineItems(lineItems.filter((_, i) => i !== index))}
+                                    className="text-red-400 hover:text-red-300 ml-2"
+                                  >
+                                    <TrashIcon className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Totals */}
+                        <div className="mt-6 flex justify-end">
+                          <div className="w-full max-w-xs space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Subtotal:</span>
+                              <span className="text-white">${subtotal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Tax (10%):</span>
+                              <span className="text-white">${tax.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-lg font-bold border-t border-white/20 pt-2">
+                              <span className="text-white">Total:</span>
+                              <span className="text-white">${total.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Notes and Delivery */}
+                      <div className="bg-white/10 border border-white/20 rounded-lg p-4 space-y-4">
+                        <div>
+                          <label className="block text-muted-foreground/70 text-sm mb-1">Add a note to this invoice (optional)</label>
+                          <textarea className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white" value={notes} onChange={e => setNotes(e.target.value)} placeholder="No notes have been specified" />
+                        </div>
+                        <div>
+                          <label className="block text-muted-foreground/70 text-sm mb-1">Deliver invoice to</label>
+                          <div className="flex flex-col md:flex-row md:items-center gap-2">
+                            <input className="flex-1 bg-transparent border border-white/20 rounded-md p-2 text-white" value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="Email subject (optional)" />
+                            <input className="flex-1 bg-transparent border border-white/20 rounded-md p-2 text-white" value={emailRecipient} onChange={e => setEmailRecipient(e.target.value)} placeholder="CC email" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bank Info and Notes */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={bankInfo} onChange={e => setBankInfo(e.target.value)} placeholder="Bank Information" />
+                        <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="Notes" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <DocumentTextIcon className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-muted-foreground mb-2">No Invoice for This Month</h3>
+                      <p className="text-muted-foreground/70 mb-4">There is no invoice data available for {new Date(issueDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.</p>
+                      <button 
+                        onClick={() => {
+                          setHasInvoice(true);
+                          setTitle(`Invoice for ${new Date(issueDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`);
+                          setLineItems([
+                            { 
+                              description: 'Monthly Rent', 
+                              category: 'Rent', 
+                              quantity: 1, 
+                              price: lease.monthly_rent, 
+                              total: lease.monthly_rent 
+                            }
+                          ]);
+                        }}
+                        className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                      >
+                        <PlusIcon className="h-5 w-5 mr-2" />
+                        Create Invoice
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Hidden PDF Content - Completely isolated from CSS */}
+                <div 
+                  ref={invoiceRef} 
+                  style={{ 
+                    position: 'absolute',
+                    left: '-9999px',
+                    top: '0',
+                    visibility: 'hidden'
+                  }}
+                >
+                  <div style={{ 
+                    backgroundColor: '#ffffff', 
+                    color: '#000000', 
+                    padding: '20px', 
+                    fontFamily: 'Arial, Helvetica, sans-serif',
+                    minHeight: '297mm',
+                    width: '210mm',
+                    boxSizing: 'border-box',
+                    lineHeight: '1.4'
+                  }}>
+                    {/* Header Section */}
+                    <div style={{ display: 'flex', marginBottom: '20px' }}>
+                      {/* Dark Logo Section */}
+                      <div style={{ 
+                        backgroundColor: '#404040', 
+                        width: '120px', 
+                        height: '80px', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        marginRight: '20px'
+                      }}>
+                        <div style={{ 
+                          color: '#ffffff', 
+                          fontSize: '24px', 
+                          fontWeight: 'bold',
+                          textAlign: 'center'
+                        }}>
+                          logo
+                        </div>
+                      </div>
+                      
+                      {/* Company Info Section */}
+                      <div style={{ flex: 1, paddingLeft: '20px' }}>
+                        <div style={{ fontSize: '10px', color: '#888', marginBottom: '5px' }}>To</div>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px' }}>
+                          {tenant?.name || lease.tenant_name}
+                        </div>
+                        <div style={{ fontSize: '9px', color: '#888', lineHeight: '1.3' }}>
+                          <div>Phone: 07790 046362</div>
+                          <div>Address: {property?.address || 'Unit 2A, Property Address'}</div>
+                          <div>City Goes Here, 8001</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Summary Box */}
+                    <div style={{ 
+                      backgroundColor: '#f0f0f0', 
+                      padding: '10px', 
+                      marginBottom: '20px',
+                      display: 'flex',
+                      justifyContent: 'space-around',
+                      alignItems: 'center'
+                    }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 'bold' }}>Date</div>
+                        <div style={{ fontSize: '9px' }}>{new Date(issueDate).toLocaleDateString('en-GB')}</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 'bold' }}>Total Due:</div>
+                        <div style={{ fontSize: '9px' }}>${total.toFixed(2)}</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '9px', fontWeight: 'bold' }}>Account Net</div>
+                        <div style={{ fontSize: '9px' }}>${total.toFixed(2)}</div>
+                      </div>
+                    </div>
+
+                    {/* Invoice Title and Number */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                      <div style={{ fontSize: '36px', fontWeight: 'bold' }}>INVOICE</div>
+                      <div style={{ fontSize: '12px' }}>Invoice No: {invoiceNumber}</div>
+                    </div>
+
+                    {/* Table */}
+                    <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#404040', color: '#ffffff' }}>
+                          <th style={{ padding: '10px', textAlign: 'left', fontSize: '10px', fontWeight: 'bold' }}>ITEM DESCRIPTION</th>
+                          <th style={{ padding: '10px', textAlign: 'right', fontSize: '10px', fontWeight: 'bold' }}>UNIT PRICE</th>
+                          <th style={{ padding: '10px', textAlign: 'center', fontSize: '10px', fontWeight: 'bold' }}>QTY</th>
+                          <th style={{ padding: '10px', textAlign: 'right', fontSize: '10px', fontWeight: 'bold' }}>TOTAL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lineItems.filter(item => item.description.trim() !== '').map((item, idx) => (
+                          <tr key={idx} style={{ backgroundColor: idx % 2 === 0 ? '#f5f5f5' : '#ffffff' }}>
+                            <td style={{ padding: '12px 10px' }}>
+                              <div style={{ fontSize: '9px', fontWeight: 'bold' }}>{item.description}</div>
+                              <div style={{ fontSize: '8px', color: '#888' }}>{item.category || 'Service description'}</div>
+                            </td>
+                            <td style={{ padding: '12px 10px', textAlign: 'right', fontSize: '9px' }}>${item.price.toFixed(2)}</td>
+                            <td style={{ padding: '12px 10px', textAlign: 'center', fontSize: '9px' }}>{item.quantity}</td>
+                            <td style={{ padding: '12px 10px', textAlign: 'right', fontSize: '9px' }}>${item.total.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+
+                    {/* Bottom Section */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      {/* Payment Method */}
+                      <div style={{ width: '45%' }}>
+                        <h4 style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '8px' }}>Payment Method</h4>
+                        <div style={{ fontSize: '8px', color: '#888', marginBottom: '8px', lineHeight: '1.3' }}>
+                          {bankInfo ? bankInfo.split('\n').slice(0, 2).join('\n') : 'Bank transfer details available on request'}
+                        </div>
+                        <div style={{ fontSize: '8px', fontWeight: 'bold' }}>
+                          Bank Transfer • Cash • Cheque
+                        </div>
+                      </div>
+
+                      {/* Summary */}
+                      <div style={{ width: '45%' }}>
+                        <div style={{ 
+                          backgroundColor: '#f0f0f0', 
+                          padding: '8px', 
+                          marginBottom: '2px',
+                          display: 'flex',
+                          justifyContent: 'space-between'
+                        }}>
+                          <span style={{ fontSize: '10px', fontWeight: 'bold' }}>Sub Total</span>
+                          <span style={{ fontSize: '10px', fontWeight: 'bold' }}>${subtotal.toFixed(2)}</span>
+                        </div>
+                        <div style={{ 
+                          padding: '8px', 
+                          marginBottom: '2px',
+                          display: 'flex',
+                          justifyContent: 'space-between'
+                        }}>
+                          <span style={{ fontSize: '10px' }}>Tax Vat 10%</span>
+                          <span style={{ fontSize: '10px' }}>${tax.toFixed(2)}</span>
+                        </div>
+                        <div style={{ 
+                          backgroundColor: '#404040', 
+                          color: '#ffffff',
+                          padding: '12px', 
+                          display: 'flex',
+                          justifyContent: 'space-between'
+                        }}>
+                          <span style={{ fontSize: '12px', fontWeight: 'bold' }}>GRAND TOTAL</span>
+                          <span style={{ fontSize: '12px', fontWeight: 'bold' }}>${total.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Section */}
+                    <div style={{ marginTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                      {/* Left Side - Terms and Contact */}
+                      <div style={{ width: '45%' }}>
+                        <h4 style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '8px' }}>Terms:</h4>
+                        <div style={{ fontSize: '8px', color: '#888', marginBottom: '20px', lineHeight: '1.3' }}>
+                          {notes || 'Payment due within 30 days of invoice date.\nLate payments may incur additional charges.'}
+                        </div>
+                        
+                        <h4 style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '8px' }}>Contact Us</h4>
+                        <div style={{ fontSize: '8px', color: '#888', lineHeight: '1.3' }}>
+                          <div>📍 Property Management Office</div>
+                          <div>📞 +27 82 123 4567</div>
+                          <div>✉ info@propertymanagement.co.za</div>
+                        </div>
+                      </div>
+
+                      {/* Right Side - Signature and Thank You */}
+                      <div style={{ width: '45%', textAlign: 'center' }}>
+                        <div style={{ marginBottom: '20px' }}>
+                          <div style={{ fontSize: '14px', borderBottom: '1px solid #000', paddingBottom: '5px', marginBottom: '5px' }}>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                          </div>
+                          <div style={{ fontSize: '10px', fontWeight: 'bold' }}>PROPERTY MANAGER</div>
+                          <div style={{ fontSize: '8px', color: '#888' }}>Manager</div>
+                        </div>
+                        
+                        <div style={{ fontSize: '16px', fontWeight: 'bold', textAlign: 'center' }}>
+                          <div>THANK YOU FOR</div>
+                          <div>YOUR BUSINESS</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Other Financial Tabs */}
@@ -886,558 +2217,5 @@ export default function LeaseDetailPage() {
         )}
       </div>
     </DashboardLayout>
-  );
-}
-
-// Invoice Creation Form Component
-interface InvoiceCreationFormProps {
-  lease: Lease;
-  tenant: any;
-  landlord: any;
-  property: any;
-}
-
-const STATUS_OPTIONS = [
-  { value: 'not_actioned', label: 'Not yet actioned', icon: ClockIcon, color: 'text-muted-foreground/70' },
-  { value: 'ready', label: 'Ready to send', icon: CheckCircleIcon, color: 'text-green-500' },
-  { value: 'waiting_expenses', label: 'Waiting for expenses', icon: CogIcon, color: 'text-yellow-400' },
-  { value: 'urgent', label: 'Requires urgent attention', icon: ExclamationTriangleIcon, color: 'text-red-500' },
-];
-
-function InvoiceCreationForm({ lease, tenant, landlord, property }: InvoiceCreationFormProps) {
-  // Get current month for initial invoice date
-  const getCurrentMonthDate = () => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-  };
-
-  // Invoice state
-  const [title, setTitle] = useState('');
-  const [invoiceNumber, setInvoiceNumber] = useState(`INV-${Date.now().toString().slice(-6)}`);
-  const [issueDate, setIssueDate] = useState(getCurrentMonthDate());
-  const [dueDate, setDueDate] = useState(new Date(Date.now() + 30*24*60*60*1000).toISOString().slice(0, 10));
-  const [status, setStatus] = useState('ready');
-  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
-  const [fromDetails, setFromDetails] = useState('Your company details...');
-  const [toDetails, setToDetails] = useState('Client details...');
-  const [lineItems, setLineItems] = useState([
-    { description: 'Item description', category: '', quantity: 1, price: 0, total: 0 },
-    { description: 'Item description', category: '', quantity: 1, price: 0, total: 0 },
-  ]);
-  const [notes, setNotes] = useState('');
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailRecipient, setEmailRecipient] = useState(tenant?.email || 'tenant@example.com');
-  const [bankInfo, setBankInfo] = useState('');
-  const [extraNotes, setExtraNotes] = useState('');
-  const [hasInvoice, setHasInvoice] = useState(false); // Track if invoice exists for current month
-  const invoiceRef = useRef<HTMLDivElement>(null);
-  const [downloading, setDownloading] = useState(false);
-
-  // Line item handlers
-  const handleLineChange = (idx: number, field: string, value: any) => {
-    setLineItems(items => items.map((item, i) =>
-      i === idx ? { ...item, [field]: value, total: field === 'quantity' || field === 'price' ? (field === 'quantity' ? value * item.price : item.quantity * value) : item.quantity * item.price } : item
-    ));
-  };
-  
-  const addLine = () => setLineItems([...lineItems, { description: '', category: '', quantity: 1, price: 0, total: 0 }]);
-  const removeLine = (idx: number) => setLineItems(items => items.filter((_, i) => i !== idx));
-
-  // Month navigation
-  const navigateMonth = (direction: 'prev' | 'next') => {
-    const currentDate = new Date(issueDate);
-    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + (direction === 'next' ? 1 : -1), 1);
-    
-    // Auto-save current invoice before navigating
-    if (hasInvoice) {
-      saveInvoice();
-    }
-    
-    // Update issue date
-    setIssueDate(newDate.toISOString().slice(0, 10));
-    
-    // Check if invoice exists for new month (mock check)
-    const newMonthHasInvoice = Math.random() > 0.5; // Mock: 50% chance of having invoice
-    setHasInvoice(newMonthHasInvoice);
-    
-    if (newMonthHasInvoice) {
-      // Load existing invoice data (mock)
-      setTitle(`Invoice for ${newDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`);
-      setInvoiceNumber(`INV-${newDate.getFullYear()}${String(newDate.getMonth() + 1).padStart(2, '0')}`);
-      setLineItems([
-        { description: 'Rent', category: 'Rent', quantity: 1, price: lease.monthly_rent, total: lease.monthly_rent },
-        { description: 'Utilities', category: 'Utilities', quantity: 1, price: 500, total: 500 },
-      ]);
-    } else {
-      // Reset to empty state
-      setTitle('');
-      setInvoiceNumber(`INV-${newDate.getFullYear()}${String(newDate.getMonth() + 1).padStart(2, '0')}`);
-      setLineItems([
-        { description: 'Item description', category: '', quantity: 1, price: 0, total: 0 },
-        { description: 'Item description', category: '', quantity: 1, price: 0, total: 0 },
-      ]);
-    }
-    
-    toast.success(`Navigated to ${newDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`);
-  };
-
-  // Auto-save function
-  const saveInvoice = () => {
-    // Mock save functionality
-    toast.success('Invoice auto-saved');
-  };
-
-  // Totals
-  const subtotal = lineItems.reduce((sum, item) => sum + (item.total || 0), 0);
-  const taxRate = 0;
-  const tax = subtotal * (taxRate / 100);
-  const total = subtotal + tax;
-
-  // Format currency helper
-  const formatCurrency = (amount: number) => {
-    return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  // PDF download handler
-  const handleDownloadPDF = async () => {
-    if (!invoiceRef.current) return;
-    setDownloading(true);
-    try {
-      const canvas = await html2canvas(invoiceRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#fff',
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pdfWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-      pdf.save(`${invoiceNumber}.pdf`);
-    } catch (error) {
-      alert('Failed to generate PDF. Please try again.');
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  // If no invoice exists for current month, show empty state
-  if (!hasInvoice) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white">Current Invoice</h3>
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => navigateMonth('prev')}
-              className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
-            >
-              <ArrowLeftIcon className="h-4 w-4" />
-            </button>
-            <span className="text-white font-medium">
-              {new Date(issueDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </span>
-            <button
-              onClick={() => navigateMonth('next')}
-              className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
-            >
-              <ArrowRightIcon className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-        
-        {/* Empty State */}
-        <div className="bg-white/5 border border-white/20 rounded-lg p-12 text-center">
-          <div className="max-w-md mx-auto">
-            <DocumentTextIcon className="h-16 w-16 text-muted-foreground/70 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">No Invoice for This Month</h3>
-            <p className="text-muted-foreground/70 mb-6">
-              There's no invoice created for {new Date(issueDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}. 
-              Use the arrows to navigate to a month with an existing invoice, or create a new one.
-            </p>
-            <button
-              onClick={() => {
-                setHasInvoice(true);
-                setTitle(`Invoice for ${new Date(issueDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`);
-                toast.success('New invoice created');
-              }}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium"
-            >
-              <PlusIcon className="h-4 w-4 mr-2" />
-              Create Invoice for This Month
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-8">
-      {/* Header with Month Navigation */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center space-x-4">
-          <input
-            className="text-3xl font-bold bg-transparent border-none outline-none text-muted-foreground placeholder-gray-400"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="Title (Optional)"
-          />
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => navigateMonth('prev')}
-              className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
-            >
-              <ArrowLeftIcon className="h-4 w-4" />
-            </button>
-            <span className="text-white font-medium">
-              {new Date(issueDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-            </span>
-            <button
-              onClick={() => navigateMonth('next')}
-              className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
-            >
-              <ArrowRightIcon className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-        <div className="relative flex items-center gap-2">
-          <button
-            className="flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
-            onClick={() => setShowStatusDropdown(v => !v)}
-            type="button"
-          >
-            {STATUS_OPTIONS.find(opt => opt.value === status)?.icon && (
-              <span className={`mr-2 ${STATUS_OPTIONS.find(opt => opt.value === status)?.color}`}>
-                {React.createElement(STATUS_OPTIONS.find(opt => opt.value === status)!.icon, { className: 'h-5 w-5' })}
-              </span>
-            )}
-            {STATUS_OPTIONS.find(opt => opt.value === status)?.label}
-            <ChevronDownIcon className="h-4 w-4 ml-2" />
-          </button>
-          {/* Download button next to status */}
-          <button
-            onClick={handleDownloadPDF}
-            disabled={downloading}
-            className="flex items-center px-3 py-2 border border-green-500 rounded-md text-sm font-medium text-green-500 bg-green-500/10 hover:bg-green-500/20 transition-colors disabled:opacity-50"
-            title="Download PDF"
-          >
-            <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
-            {downloading ? 'Generating...' : 'Download'}
-          </button>
-          {showStatusDropdown && (
-            <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
-              {STATUS_OPTIONS.map(opt => (
-                <div
-                  key={opt.value}
-                  className={`flex items-center px-4 py-2 cursor-pointer hover:bg-muted ${status === opt.value ? 'bg-muted' : ''}`}
-                  onClick={() => { setStatus(opt.value); setShowStatusDropdown(false); }}
-                >
-                  <span className={`mr-2 ${opt.color}`}>{React.createElement(opt.icon, { className: 'h-5 w-5' })}</span>
-                  {opt.label}
-                </div>
-              ))}
-              <div className="border-t border-gray-200">
-                <button className="flex items-center px-4 py-2 w-full text-xs text-blue-500 hover:bg-muted">
-                  <CogIcon className="h-4 w-4 mr-2" /> Set default state
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Invoice Info */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/10 border border-white/20 rounded-lg p-6">
-        <div>
-          <div className="text-muted-foreground/70 text-sm mb-1">Invoice #</div>
-          <input className="bg-transparent border-none outline-none text-blue-400 font-semibold" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} />
-        </div>
-        <div>
-          <div className="text-muted-foreground/70 text-sm mb-1">Issue Date</div>
-          <input type="date" className="bg-transparent border-none outline-none text-white" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
-        </div>
-        <div>
-          <div className="text-muted-foreground/70 text-sm mb-1">Due Date</div>
-          <input type="date" className="bg-transparent border-none outline-none text-white" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-        </div>
-      </div>
-
-      {/* From/To */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={fromDetails} onChange={e => setFromDetails(e.target.value)} placeholder="Your company details..." />
-        <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={toDetails} onChange={e => setToDetails(e.target.value)} placeholder="Client details..." />
-      </div>
-
-      {/* Line Items */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-white/10">
-          <thead>
-            <tr className="text-muted-foreground/70 text-sm">
-              <th className="px-4 py-2 text-left">Description</th>
-              <th className="px-4 py-2 text-left">Category</th>
-              <th className="px-4 py-2 text-center">Quantity</th>
-              <th className="px-4 py-2 text-right">Price</th>
-              <th className="px-4 py-2 text-right">Total</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {lineItems.map((item, idx) => (
-              <tr key={idx} className="bg-white/5">
-                <td className="px-4 py-2">
-                  <input className="w-full bg-transparent border-none outline-none text-white" value={item.description} onChange={e => handleLineChange(idx, 'description', e.target.value)} placeholder="Item description" />
-                </td>
-                <td className="px-4 py-2">
-                  <input className="w-full bg-transparent border-none outline-none text-white" value={item.category} onChange={e => handleLineChange(idx, 'category', e.target.value)} placeholder="Category" />
-                </td>
-                <td className="px-4 py-2 text-center">
-                  <div className="flex items-center justify-center space-x-2">
-                    <button onClick={() => handleLineChange(idx, 'quantity', Math.max(1, item.quantity - 1))} className="p-1"><MinusIcon className="h-4 w-4 text-muted-foreground/70" /></button>
-                    <input type="number" min={1} className="w-12 text-center bg-transparent border-none outline-none text-white" value={item.quantity} onChange={e => handleLineChange(idx, 'quantity', Math.max(1, Number(e.target.value)))} />
-                    <button onClick={() => handleLineChange(idx, 'quantity', item.quantity + 1)} className="p-1"><PlusIcon className="h-4 w-4 text-muted-foreground/70" /></button>
-                  </div>
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <input type="number" min={0} className="w-20 text-right bg-transparent border-none outline-none text-white" value={item.price} onChange={e => handleLineChange(idx, 'price', Number(e.target.value))} />
-                </td>
-                <td className="px-4 py-2 text-right">{formatCurrency(item.total)}</td>
-                <td className="px-2 py-2 text-center">
-                  <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-300"><MinusIcon className="h-4 w-4" /></button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <button onClick={addLine} className="mt-2 flex items-center text-blue-400 hover:text-blue-300 text-sm">
-          <PlusIcon className="h-4 w-4 mr-1" /> Add line
-        </button>
-      </div>
-
-      {/* Invoice Actions */}
-      <div className="flex flex-wrap gap-2 mt-2">
-        <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Add payment</button>
-        <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Add charge</button>
-        <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Issue credit</button>
-        <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Issue refund</button>
-        <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Use deposit</button>
-      </div>
-
-      {/* Totals */}
-      <div className="flex flex-col items-end space-y-1">
-        <div className="flex items-center gap-8">
-          <div className="text-muted-foreground/70">Subtotal</div>
-          <div className="text-white font-semibold">${formatCurrency(subtotal)}</div>
-        </div>
-        <div className="flex items-center gap-8">
-          <div className="text-muted-foreground/70">Tax</div>
-          <div className="text-white font-semibold">{taxRate}% ${formatCurrency(tax)}</div>
-        </div>
-        <div className="flex items-center gap-8">
-          <div className="text-muted-foreground/70">Subtotal with Tax</div>
-          <div className="text-white font-semibold">${formatCurrency(subtotal + tax)}</div>
-        </div>
-        <div className="flex items-center gap-8 text-lg font-bold border-t border-white/20 pt-2 mt-2">
-          <div className="text-white">Total</div>
-          <div className="text-white">${formatCurrency(total)}</div>
-        </div>
-      </div>
-
-      {/* Notes and Delivery */}
-      <div className="bg-white/10 border border-white/20 rounded-lg p-4 space-y-4">
-        <div>
-          <label className="block text-muted-foreground/70 text-sm mb-1">Add a note to this invoice (optional)</label>
-          <textarea className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white" value={notes} onChange={e => setNotes(e.target.value)} placeholder="No notes have been specified" />
-        </div>
-        <div>
-          <label className="block text-muted-foreground/70 text-sm mb-1">Deliver invoice to</label>
-          <div className="flex flex-col md:flex-row md:items-center gap-2">
-            <input className="flex-1 bg-transparent border border-white/20 rounded-md p-2 text-white" value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="Email subject (optional)" />
-            <input className="flex-1 bg-transparent border border-white/20 rounded-md p-2 text-white" value={emailRecipient} onChange={e => setEmailRecipient(e.target.value)} placeholder="CC email" />
-          </div>
-        </div>
-      </div>
-
-      {/* Bank Info and Notes */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={bankInfo} onChange={e => setBankInfo(e.target.value)} placeholder="Bank Information" />
-        <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="Notes" />
-      </div>
-      <div ref={invoiceRef} className="invoice-pdf-content">
-        {/* Move all invoice content here for PDF capture */}
-        {/* Header with Month Navigation */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center space-x-4">
-            <input
-              className="text-3xl font-bold bg-transparent border-none outline-none text-muted-foreground placeholder-gray-400"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="Title (Optional)"
-            />
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => navigateMonth('prev')}
-                className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
-              >
-                <ArrowLeftIcon className="h-4 w-4" />
-              </button>
-              <span className="text-white font-medium">
-                {new Date(issueDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-              </span>
-              <button
-                onClick={() => navigateMonth('next')}
-                className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
-              >
-                <ArrowRightIcon className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-          <div className="relative flex items-center gap-2">
-            <button
-              className="flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
-              onClick={() => setShowStatusDropdown(v => !v)}
-              type="button"
-            >
-              {STATUS_OPTIONS.find(opt => opt.value === status)?.icon && (
-                <span className={`mr-2 ${STATUS_OPTIONS.find(opt => opt.value === status)?.color}`}>
-                  {React.createElement(STATUS_OPTIONS.find(opt => opt.value === status)!.icon, { className: 'h-5 w-5' })}
-                </span>
-              )}
-              {STATUS_OPTIONS.find(opt => opt.value === status)?.label}
-              <ChevronDownIcon className="h-4 w-4 ml-2" />
-            </button>
-            {/* Download button next to status */}
-            <button
-              onClick={handleDownloadPDF}
-              disabled={downloading}
-              className="flex items-center px-3 py-2 border border-green-500 rounded-md text-sm font-medium text-green-500 bg-green-500/10 hover:bg-green-500/20 transition-colors disabled:opacity-50"
-              title="Download PDF"
-            >
-              <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
-              {downloading ? 'Generating...' : 'Download'}
-            </button>
-          </div>
-        </div>
-
-        {/* Invoice Info */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/10 border border-white/20 rounded-lg p-6">
-          <div>
-            <div className="text-muted-foreground/70 text-sm mb-1">Invoice #</div>
-            <input className="bg-transparent border-none outline-none text-blue-400 font-semibold" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} />
-          </div>
-          <div>
-            <div className="text-muted-foreground/70 text-sm mb-1">Issue Date</div>
-            <input type="date" className="bg-transparent border-none outline-none text-white" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
-          </div>
-          <div>
-            <div className="text-muted-foreground/70 text-sm mb-1">Due Date</div>
-            <input type="date" className="bg-transparent border-none outline-none text-white" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-          </div>
-        </div>
-
-        {/* From/To */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={fromDetails} onChange={e => setFromDetails(e.target.value)} placeholder="Your company details..." />
-          <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={toDetails} onChange={e => setToDetails(e.target.value)} placeholder="Client details..." />
-        </div>
-
-        {/* Line Items */}
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-white/10">
-            <thead>
-              <tr className="text-muted-foreground/70 text-sm">
-                <th className="px-4 py-2 text-left">Description</th>
-                <th className="px-4 py-2 text-left">Category</th>
-                <th className="px-4 py-2 text-center">Quantity</th>
-                <th className="px-4 py-2 text-right">Price</th>
-                <th className="px-4 py-2 text-right">Total</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {lineItems.map((item, idx) => (
-                <tr key={idx} className="bg-white/5">
-                  <td className="px-4 py-2">
-                    <input className="w-full bg-transparent border-none outline-none text-white" value={item.description} onChange={e => handleLineChange(idx, 'description', e.target.value)} placeholder="Item description" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input className="w-full bg-transparent border-none outline-none text-white" value={item.category} onChange={e => handleLineChange(idx, 'category', e.target.value)} placeholder="Category" />
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    <div className="flex items-center justify-center space-x-2">
-                      <button onClick={() => handleLineChange(idx, 'quantity', Math.max(1, item.quantity - 1))} className="p-1"><MinusIcon className="h-4 w-4 text-muted-foreground/70" /></button>
-                      <input type="number" min={1} className="w-12 text-center bg-transparent border-none outline-none text-white" value={item.quantity} onChange={e => handleLineChange(idx, 'quantity', Math.max(1, Number(e.target.value)))} />
-                      <button onClick={() => handleLineChange(idx, 'quantity', item.quantity + 1)} className="p-1"><PlusIcon className="h-4 w-4 text-muted-foreground/70" /></button>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <input type="number" min={0} className="w-20 text-right bg-transparent border-none outline-none text-white" value={item.price} onChange={e => handleLineChange(idx, 'price', Number(e.target.value))} />
-                  </td>
-                  <td className="px-4 py-2 text-right">{formatCurrency(item.total)}</td>
-                  <td className="px-2 py-2 text-center">
-                    <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-300"><MinusIcon className="h-4 w-4" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button onClick={addLine} className="mt-2 flex items-center text-blue-400 hover:text-blue-300 text-sm">
-            <PlusIcon className="h-4 w-4 mr-1" /> Add line
-          </button>
-        </div>
-
-        {/* Invoice Actions */}
-        <div className="flex flex-wrap gap-2 mt-2">
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Add payment</button>
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Add charge</button>
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Issue credit</button>
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Issue refund</button>
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Use deposit</button>
-        </div>
-
-        {/* Totals */}
-        <div className="flex flex-col items-end space-y-1">
-          <div className="flex items-center gap-8">
-            <div className="text-muted-foreground/70">Subtotal</div>
-            <div className="text-white font-semibold">${formatCurrency(subtotal)}</div>
-          </div>
-          <div className="flex items-center gap-8">
-            <div className="text-muted-foreground/70">Tax</div>
-            <div className="text-white font-semibold">{taxRate}% ${formatCurrency(tax)}</div>
-          </div>
-          <div className="flex items-center gap-8">
-            <div className="text-muted-foreground/70">Subtotal with Tax</div>
-            <div className="text-white font-semibold">${formatCurrency(subtotal + tax)}</div>
-          </div>
-          <div className="flex items-center gap-8 text-lg font-bold border-t border-white/20 pt-2 mt-2">
-            <div className="text-white">Total</div>
-            <div className="text-white">${formatCurrency(total)}</div>
-          </div>
-        </div>
-
-        {/* Notes and Delivery */}
-        <div className="bg-white/10 border border-white/20 rounded-lg p-4 space-y-4">
-          <div>
-            <label className="block text-muted-foreground/70 text-sm mb-1">Add a note to this invoice (optional)</label>
-            <textarea className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white" value={notes} onChange={e => setNotes(e.target.value)} placeholder="No notes have been specified" />
-          </div>
-          <div>
-            <label className="block text-muted-foreground/70 text-sm mb-1">Deliver invoice to</label>
-            <div className="flex flex-col md:flex-row md:items-center gap-2">
-              <input className="flex-1 bg-transparent border border-white/20 rounded-md p-2 text-white" value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="Email subject (optional)" />
-              <input className="flex-1 bg-transparent border border-white/20 rounded-md p-2 text-white" value={emailRecipient} onChange={e => setEmailRecipient(e.target.value)} placeholder="CC email" />
-            </div>
-          </div>
-        </div>
-
-        {/* Bank Info and Notes */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={bankInfo} onChange={e => setBankInfo(e.target.value)} placeholder="Bank Information" />
-          <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="Notes" />
-        </div>
-      </div>
-    </div>
   );
 }

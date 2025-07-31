@@ -22,9 +22,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ThemeProvider>
-      <html lang="en">
-        <body>
+    <html lang="en">
+      <body>
+        <ThemeProvider>
           <AuthProvider>
             {children}
             <Toaster
@@ -51,8 +51,8 @@ export default function RootLayout({
               }}
             />
           </AuthProvider>
-        </body>
-      </html>
-    </ThemeProvider>
+        </ThemeProvider>
+      </body>
+    </html>
   );
 }

@@ -148,6 +148,64 @@ export interface MaintenanceTeam {
   is_active: boolean;
 }
 
+export interface Invoice {
+  id: string;
+  invoice_number: string;
+  title?: string;
+  issue_date?: string;
+  due_date: string;
+  status: 'draft' | 'sent' | 'locked' | 'paid' | 'overdue' | 'cancelled';
+  lease: string;
+  property: string;
+  tenant: string;
+  landlord?: string;
+  created_by?: string;
+  subtotal: number;
+  tax_rate: number;
+  tax_amount: number;
+  total_amount: number;
+  notes?: string;
+  email_subject?: string;
+  email_recipient?: string;
+  bank_info?: string;
+  extra_notes?: string;
+  line_items?: InvoiceLineItem[];
+  // Locking fields
+  is_locked: boolean;
+  locked_at?: string;
+  locked_by?: string;
+  sent_at?: string;
+  sent_by?: string;
+  // Invoice type fields
+  invoice_type: 'regular' | 'interim' | 'late_fee' | 'credit';
+  parent_invoice?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvoiceLineItem {
+  id?: string;
+  description: string;
+  category?: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+}
+
+export interface InvoiceTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  from_details?: string;
+  to_details?: string;
+  default_notes?: string;
+  bank_info?: string;
+  usage_count?: number;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Inspection {
   id: string;
   type: 'move_in' | 'periodic' | 'move_out';
@@ -803,6 +861,172 @@ export const financeApi = {
   getCashFlow: async (period?: string): Promise<{ inflow: number; outflow: number; net: number }> => {
     const response = await api.get('/finance/cash-flow/', { params: { period } });
     return response.data;
+  },
+};
+
+// Invoice API - Complete implementation
+export const invoiceApi = {
+  // Get all invoices with pagination and filtering
+  getInvoices: async (params?: any): Promise<{ results: Invoice[]; count: number; next?: string; previous?: string }> => {
+    const response = await api.get('/finance/invoices/', { params });
+    return response.data;
+  },
+
+  // Get all invoices (for compatibility with existing code)
+  getAll: async (params?: any): Promise<Invoice[]> => {
+    const response = await api.get('/finance/invoices/', { params });
+    return response.data.results || response.data;
+  },
+
+  // Get single invoice
+  getInvoice: async (id: string | number): Promise<Invoice> => {
+    const response = await api.get(`/finance/invoices/${id}/`);
+    return response.data;
+  },
+
+  // Create new invoice
+  createInvoice: async (data: any): Promise<Invoice> => {
+    const response = await api.post('/finance/invoices/', data);
+    return response.data;
+  },
+
+  // Update invoice
+  updateInvoice: async (id: string | number, data: any): Promise<Invoice> => {
+    const response = await api.patch(`/finance/invoices/${id}/`, data);
+    return response.data;
+  },
+
+  // Delete invoice
+  deleteInvoice: async (id: string | number): Promise<void> => {
+    await api.delete(`/finance/invoices/${id}/`);
+  },
+
+  // Send invoice via email
+  sendInvoice: async (
+    invoiceId: string | number, 
+    method: 'email' | 'whatsapp' | 'sms' = 'email',
+    recipientEmail?: string
+  ): Promise<{ success: boolean; message: string; status?: string }> => {
+    const response = await api.post(`/finance/invoices/${invoiceId}/send_invoice/`, {
+      method,
+      recipient_email: recipientEmail,
+    });
+    return response.data;
+  },
+
+  // Mark invoice as paid
+  markInvoiceAsPaid: async (id: string | number, data?: any): Promise<Invoice> => {
+    const response = await api.post(`/finance/invoices/${id}/mark_paid/`, data || {});
+    return response.data;
+  },
+
+  // Apply late fee to invoice
+  applyLateFee: async (id: string | number, amount: number): Promise<Invoice> => {
+    const response = await api.post(`/finance/invoices/${id}/apply_late_fee/`, { amount });
+    return response.data;
+  },
+
+  // Duplicate invoice
+  duplicateInvoice: async (id: string | number): Promise<Invoice> => {
+    const response = await api.post(`/finance/invoices/${id}/duplicate/`);
+    return response.data;
+  },
+
+  // Generate and download invoice PDF
+  generateInvoicePDF: async (id: string | number): Promise<Blob> => {
+    const response = await api.get(`/finance/invoices/${id}/generate_pdf/`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  // Send bulk reminders
+  sendBulkReminders: async (
+    invoiceIds: (string | number)[], 
+    method: 'email' | 'whatsapp' | 'sms' = 'email'
+  ): Promise<{ success: boolean; results: any; message: string }> => {
+    const response = await api.post('/finance/invoices/send_bulk_reminders/', {
+      invoice_ids: invoiceIds,
+      method,
+    });
+    return response.data;
+  },
+
+  // Invoice templates
+  getInvoiceTemplates: async (): Promise<InvoiceTemplate[]> => {
+    const response = await api.get('/finance/invoice-templates/');
+    return response.data.results || response.data;
+  },
+
+  getInvoiceTemplate: async (id: string | number): Promise<InvoiceTemplate> => {
+    const response = await api.get(`/finance/invoice-templates/${id}/`);
+    return response.data;
+  },
+
+  createInvoiceTemplate: async (data: any): Promise<InvoiceTemplate> => {
+    const response = await api.post('/finance/invoice-templates/', data);
+    return response.data;
+  },
+
+  updateInvoiceTemplate: async (id: string | number, data: any): Promise<InvoiceTemplate> => {
+    const response = await api.patch(`/finance/invoice-templates/${id}/`, data);
+    return response.data;
+  },
+
+  deleteInvoiceTemplate: async (id: string | number): Promise<void> => {
+    await api.delete(`/finance/invoice-templates/${id}/`);
+  },
+
+  applyTemplateToInvoice: async (templateId: string | number, invoiceId: string | number): Promise<Invoice> => {
+    const response = await api.post(`/finance/invoice-templates/${templateId}/apply_to_invoice/`, {
+      invoice_id: invoiceId,
+    });
+    return response.data;
+  },
+
+  // New locking and audit features
+  getAuditTrail: async (id: string | number): Promise<{ invoice_number: string; audit_trail: any[] }> => {
+    const response = await api.get(`/finance/invoices/${id}/audit_trail/`);
+    return response.data;
+  },
+
+  adminUnlock: async (id: string | number, reason: string): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`/finance/invoices/${id}/admin_unlock/`, { reason });
+    return response.data;
+  },
+
+  createInterimInvoice: async (
+    parentInvoiceId: string | number,
+    data: {
+      invoice_type: 'interim' | 'late_fee' | 'credit';
+      description: string;
+      line_items: Array<{
+        description: string;
+        category?: string;
+        quantity: number;
+        unit_price: number;
+      }>;
+    }
+  ): Promise<{ success: boolean; message: string; invoice?: Invoice }> => {
+    const response = await api.post(`/finance/invoices/${parentInvoiceId}/create_interim_invoice/`, data);
+    return response.data;
+  },
+
+  // Check invoice permissions
+  canEdit: (invoice: Invoice): boolean => {
+    return !invoice.is_locked && invoice.status === 'draft';
+  },
+
+  canSend: (invoice: Invoice): boolean => {
+    return !invoice.is_locked && invoice.status === 'draft';
+  },
+
+  canDelete: (invoice: Invoice): boolean => {
+    return !invoice.is_locked && invoice.status === 'draft';
+  },
+
+  isLocked: (invoice: Invoice): boolean => {
+    return invoice.is_locked || invoice.status === 'locked';
   },
 };
 
