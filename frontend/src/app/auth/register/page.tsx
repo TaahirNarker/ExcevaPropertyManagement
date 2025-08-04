@@ -56,7 +56,7 @@ export default function RegisterPage() {
               transition={{ duration: 0.8, delay: 0.2 }}
               className="text-4xl font-bold text-white mb-2"
             >
-              Property Management
+              RentPilot 🚀
             </motion.h1>
             <motion.p
               initial={{ opacity: 0 }}
@@ -64,7 +64,7 @@ export default function RegisterPage() {
               transition={{ duration: 0.8, delay: 0.4 }}
               className="text-gray-300"
             >
-              Join our professional property management platform
+              Your real estate battlestation
             </motion.p>
           </div>
 
@@ -86,7 +86,7 @@ export default function RegisterPage() {
         transition={{ duration: 0.8, delay: 1 }}
         className="absolute bottom-4 left-0 right-0 text-center text-gray-400 text-sm z-10"
       >
-        © 2024 Property Management System. All rights reserved.
+        © 2024 RentPilot. All rights reserved.
       </motion.div>
     </div>
   );

@@ -327,4 +327,18 @@ body {
   .text-muted-foreground {
     color: var(--muted-foreground);
   }
+  
+  /* Autocomplete dropdown stacking context */
+  .autocomplete-container {
+    position: relative;
+    z-index: 1000;
+  }
+  
+  .autocomplete-dropdown {
+    position: absolute !important;
+    z-index: 99999 !important;
+    top: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+  }
 }

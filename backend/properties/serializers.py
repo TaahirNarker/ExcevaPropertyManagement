@@ -72,6 +72,13 @@ class PropertyListSerializer(serializers.ModelSerializer):
     # Owner info
     owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
     
+    # Sub-property info
+    is_parent_property = serializers.BooleanField(read_only=True)
+    is_sub_property = serializers.BooleanField(read_only=True)
+    sub_properties_count = serializers.IntegerField(read_only=True)
+    parent_property_name = serializers.CharField(source='parent_property.name', read_only=True)
+    sub_properties_summary = serializers.SerializerMethodField()
+    
     class Meta:
         model = Property
         fields = [
@@ -80,13 +87,19 @@ class PropertyListSerializer(serializers.ModelSerializer):
             'postal_code', 'country', 'bedrooms', 'bathrooms', 'square_meters',
             'parking_spaces', 'monthly_rental_amount', 'status', 'status_display',
             'is_active', 'full_address', 'display_name', 'occupancy_info',
-            'owner_name', 'created_at', 'updated_at', 'primary_image'
+            'owner_name', 'is_parent_property', 'is_sub_property', 'sub_properties_count',
+            'parent_property_name', 'sub_properties_summary', 'created_at', 'updated_at', 'primary_image'
         ]
         read_only_fields = [
             'id', 'property_code', 'property_type_display', 'status_display',
             'province_display', 'full_address', 'display_name', 'occupancy_info',
-            'owner_name', 'created_at', 'updated_at'
+            'owner_name', 'is_parent_property', 'is_sub_property', 'sub_properties_count',
+            'parent_property_name', 'sub_properties_summary', 'created_at', 'updated_at'
         ]
+    
+    def get_sub_properties_summary(self, obj):
+        """Get sub-properties summary"""
+        return obj.get_sub_properties_summary()
 
 
 class PropertyDetailSerializer(serializers.ModelSerializer):
@@ -118,6 +131,14 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
     current_tenant = serializers.SerializerMethodField()
     current_lease = serializers.SerializerMethodField()
     
+    # Sub-property info
+    is_parent_property = serializers.BooleanField(read_only=True)
+    is_sub_property = serializers.BooleanField(read_only=True)
+    sub_properties_count = serializers.IntegerField(read_only=True)
+    parent_property = serializers.SerializerMethodField()
+    sub_properties = serializers.SerializerMethodField()
+    sub_properties_summary = serializers.SerializerMethodField()
+    
     class Meta:
         model = Property
         fields = [
@@ -129,12 +150,16 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
             'features', 'primary_image', 'images', 'documents', 'full_address',
             'display_name', 'occupancy_info', 'owner', 'property_manager',
             'property_images', 'property_documents', 'current_tenant', 'current_lease',
+            'is_parent_property', 'is_sub_property', 'sub_properties_count',
+            'parent_property', 'sub_properties', 'sub_properties_summary',
             'created_at', 'updated_at'
         ]
         read_only_fields = [
             'id', 'property_code', 'property_type_display', 'status_display',
             'province_display', 'full_address', 'display_name', 'occupancy_info',
-            'current_tenant', 'current_lease', 'created_at', 'updated_at'
+            'current_tenant', 'current_lease', 'is_parent_property', 'is_sub_property',
+            'sub_properties_count', 'parent_property', 'sub_properties', 'sub_properties_summary',
+            'created_at', 'updated_at'
         ]
     
     def get_current_tenant(self, obj):
@@ -162,6 +187,27 @@ class PropertyDetailSerializer(serializers.ModelSerializer):
                 'deposit_amount': getattr(lease, 'deposit_amount', None)
             }
         return None
+    
+    def get_parent_property(self, obj):
+        """Get parent property information"""
+        if obj.parent_property:
+            return {
+                'id': obj.parent_property.id,
+                'property_code': obj.parent_property.property_code,
+                'name': obj.parent_property.name,
+                'property_type': obj.parent_property.property_type,
+                'full_address': obj.parent_property.full_address
+            }
+        return None
+    
+    def get_sub_properties(self, obj):
+        """Get sub-properties information"""
+        sub_props = obj.sub_properties.all()
+        return PropertyListSerializer(sub_props, many=True).data
+    
+    def get_sub_properties_summary(self, obj):
+        """Get sub-properties summary"""
+        return obj.get_sub_properties_summary()
 
 
 class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
@@ -174,7 +220,7 @@ class PropertyCreateUpdateSerializer(serializers.ModelSerializer):
             'city', 'province', 'postal_code', 'country', 'bedrooms', 'bathrooms',
             'square_meters', 'parking_spaces', 'purchase_price', 'current_market_value',
             'monthly_rental_amount', 'status', 'is_active', 'property_manager',
-            'features', 'primary_image', 'images', 'documents'
+            'parent_property', 'features', 'primary_image', 'images', 'documents'
         ]
     
     def validate_bedrooms(self, value):

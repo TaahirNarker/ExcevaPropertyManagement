@@ -42,6 +42,19 @@ export interface Property {
     lease_end?: string;
   };
   owner_name: string;
+  // Sub-property information
+  is_parent_property?: boolean;
+  is_sub_property?: boolean;
+  sub_properties_count?: number;
+  parent_property_name?: string;
+  sub_properties_summary?: {
+    total: number;
+    occupied: number;
+    vacant: number;
+    maintenance: number;
+    reserved: number;
+    total_rental_income: number;
+  };
   created_at: string;
   updated_at: string;
   primary_image?: string;
@@ -95,6 +108,15 @@ export interface PropertyDetailResponse extends Property {
     status: string;
     deposit_amount?: number;
   };
+  // Sub-property relationships
+  parent_property?: {
+    id: string;
+    property_code: string;
+    name: string;
+    property_type: string;
+    full_address: string;
+  };
+  sub_properties?: Property[];
 }
 
 export interface PropertyCreateData {
@@ -117,6 +139,7 @@ export interface PropertyCreateData {
   status: string;
   is_active?: boolean;
   property_manager?: string;
+  parent_property?: string; // For sub-properties
   features?: Record<string, any>;
   primary_image?: string;
   images?: string[];
@@ -188,12 +211,93 @@ class PropertiesAPI {
   }
 
   /**
-   * Handle API responses and errors
+   * Check if the current token is valid
    */
-  private async handleResponse<T>(response: Response): Promise<T> {
+  private async checkTokenValidity(): Promise<boolean> {
+    try {
+      const token = Cookies.get(ACCESS_TOKEN_KEY);
+      if (!token) {
+        return false;
+      }
+
+      // Try to make a simple API call to check token validity
+      const response = await fetch(`${this.baseUrl}/auth/verify/`, {
+        method: 'GET',
+        headers: this.getAuthHeaders(),
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Token validity check failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Handle API responses and errors with automatic token refresh
+   */
+    private async handleResponse<T>(response: Response, retryCount = 0, originalData?: any): Promise<T> {
     if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      const errorMessage = errorData?.detail || errorData?.error || `HTTP error! status: ${response.status}`;
+      // If we get a 401 and haven't retried yet, try to refresh the token
+      if (response.status === 401 && retryCount === 0) {
+        try {
+          // Import auth service dynamically to avoid circular dependencies
+          const { authService } = await import('./auth');
+          await authService.refreshToken();
+
+          // Retry the request with the new token
+          const retryOptions: RequestInit = {
+            method: response.method,
+            headers: this.getAuthHeaders(),
+          };
+
+          // For POST/PUT/PATCH requests, use the original data
+          if (['POST', 'PUT', 'PATCH'].includes(response.method) && originalData) {
+            retryOptions.body = JSON.stringify(originalData);
+          }
+
+          const retryResponse = await fetch(response.url, retryOptions);
+
+          return this.handleResponse<T>(retryResponse, retryCount + 1, originalData);
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+          // If refresh fails, redirect to login
+          const { authService } = await import('./auth');
+          authService.clearTokens();
+          window.location.href = '/auth/login';
+          throw new Error('Session expired. Please log in again.');
+        }
+      }
+
+      // Get detailed error information from the response
+      let errorData;
+      try {
+        errorData = await response.json();
+        console.error('Backend error response:', errorData);
+      } catch (parseError) {
+        console.error('Failed to parse error response:', parseError);
+        errorData = null;
+      }
+
+      // Construct detailed error message
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      
+      if (errorData) {
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (typeof errorData === 'object') {
+          // Handle field-specific validation errors
+          const fieldErrors = Object.entries(errorData)
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+            .join('; ');
+          errorMessage = fieldErrors || JSON.stringify(errorData);
+        } else {
+          errorMessage = String(errorData);
+        }
+      }
+
       throw new Error(errorMessage);
     }
     return response.json();
@@ -241,7 +345,7 @@ class PropertiesAPI {
       body: JSON.stringify(data),
     });
 
-    return this.handleResponse<PropertyDetailResponse>(response);
+    return this.handleResponse<PropertyDetailResponse>(response, 0, data);
   }
 
   /**
@@ -254,7 +358,7 @@ class PropertiesAPI {
       body: JSON.stringify(data),
     });
 
-    return this.handleResponse<PropertyDetailResponse>(response);
+    return this.handleResponse<PropertyDetailResponse>(response, 0, data);
   }
 
   /**

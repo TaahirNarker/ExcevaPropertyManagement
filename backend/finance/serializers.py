@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog
-from tenants.models import Lease, Tenant
+from tenants.models import Tenant
+from leases.models import Lease
 from properties.models import Property
 
 

@@ -117,6 +117,16 @@ class Property(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='vacant')
     is_active = models.BooleanField(default=True, help_text="Is this property active in the system?")
     
+    # Parent-Child Relationship for Sub-Properties
+    parent_property = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='sub_properties',
+        help_text="Parent property (for sub-properties like individual apartments in a block)"
+    )
+    
     # Ownership and Management
     owner = models.ForeignKey(
         User, 
@@ -229,7 +239,7 @@ class Property(models.Model):
     def current_tenant(self):
         """Get current tenant if property is occupied"""
         if self.status == 'occupied':
-            from tenants.models import Lease  # Import here to avoid circular import
+            from leases.models import Lease  # Import here to avoid circular import
             current_lease = Lease.objects.filter(
                 property=self,
                 status='active',
@@ -243,7 +253,7 @@ class Property(models.Model):
     def current_lease(self):
         """Get current lease if property is occupied"""
         if self.status == 'occupied':
-            from tenants.models import Lease  # Import here to avoid circular import
+            from leases.models import Lease  # Import here to avoid circular import
             return Lease.objects.filter(
                 property=self,
                 status='active',
@@ -267,6 +277,49 @@ class Property(models.Model):
                     'details': f"Occupied by {lease.tenant.get_full_name()}"
                 }
         return {'status': self.get_status_display(), 'details': None}
+    
+    @property
+    def is_parent_property(self):
+        """Check if this property has sub-properties"""
+        return self.sub_properties.exists()
+    
+    @property
+    def is_sub_property(self):
+        """Check if this property is a sub-property"""
+        return self.parent_property is not None
+    
+    @property
+    def sub_properties_count(self):
+        """Get the number of sub-properties"""
+        return self.sub_properties.count()
+    
+    @property
+    def occupied_sub_properties_count(self):
+        """Get the number of occupied sub-properties"""
+        return self.sub_properties.filter(status='occupied').count()
+    
+    @property
+    def vacant_sub_properties_count(self):
+        """Get the number of vacant sub-properties"""
+        return self.sub_properties.filter(status='vacant').count()
+    
+    def get_sub_properties_summary(self):
+        """Get a summary of sub-properties"""
+        if not self.is_parent_property:
+            return None
+        
+        sub_props = self.sub_properties.all()
+        return {
+            'total': sub_props.count(),
+            'occupied': sub_props.filter(status='occupied').count(),
+            'vacant': sub_props.filter(status='vacant').count(),
+            'maintenance': sub_props.filter(status='maintenance').count(),
+            'reserved': sub_props.filter(status='reserved').count(),
+            'total_rental_income': sum(
+                prop.monthly_rental_amount or 0 
+                for prop in sub_props.filter(status='occupied')
+            )
+        }
 
 
 class PropertyImage(models.Model):

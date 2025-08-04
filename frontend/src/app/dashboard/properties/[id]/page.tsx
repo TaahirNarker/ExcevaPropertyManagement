@@ -26,7 +26,8 @@ import {
   ExclamationTriangleIcon,
   CheckCircleIcon,
   ClockIcon,
-  XCircleIcon
+  XCircleIcon,
+  BuildingOffice2Icon
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -83,6 +84,18 @@ interface Property {
     deposit_amount?: number;
     status: string;
   };
+  // Sub-property information
+  is_parent_property?: boolean;
+  is_sub_property?: boolean;
+  sub_properties_count?: number;
+  parent_property?: {
+    id: string;
+    property_code: string;
+    name: string;
+    property_type: string;
+    full_address: string;
+  };
+  sub_properties?: Property[];
 }
 
 interface MaintenanceItem {
@@ -126,6 +139,8 @@ export default function PropertyDetailPage() {
   const [financialSummary, setFinancialSummary] = useState<FinancialSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [subProperties, setSubProperties] = useState<Property[]>([]);
+  const [loadingSubProperties, setLoadingSubProperties] = useState(false);
 
   // Fetch property details
   useEffect(() => {
@@ -153,21 +168,74 @@ export default function PropertyDetailPage() {
     }
   }, [propertyId]);
 
+  // Fetch sub-properties when sub-properties tab is selected
+  useEffect(() => {
+    if (activeTab === 'sub-properties' && property?.is_parent_property) {
+      fetchSubProperties();
+    }
+  }, [activeTab, property?.is_parent_property]);
+
   const fetchMaintenanceItems = async () => {
     try {
-      const data = await propertyAPI.getMaintenanceItems({ property_id: propertyId });
-      setMaintenanceItems(data);
+      // TODO: Implement maintenance API endpoint in backend
+      // For now, set empty array to prevent 404 errors
+      setMaintenanceItems([]);
     } catch (error) {
       console.error('Error fetching maintenance items:', error);
+      setMaintenanceItems([]);
     }
   };
 
   const fetchFinancialSummary = async () => {
     try {
-      const data = await propertyAPI.getFinancialSummary(propertyId);
-      setFinancialSummary(data);
+      // TODO: Implement financial summary API endpoint in backend
+      // For now, set default values to prevent 404 errors
+      setFinancialSummary({
+        total_rental_income: 0,
+        total_outstanding: 0,
+        collection_rate: 0,
+        deposits_held: 0,
+        payments_due_landlords: 0,
+        payments_due_suppliers: 0,
+        monthly_revenue: 0,
+        monthly_expenses: 0,
+        net_profit: 0,
+        cash_flow: 0,
+      });
     } catch (error) {
       console.error('Error fetching financial summary:', error);
+      setFinancialSummary({
+        total_rental_income: 0,
+        total_outstanding: 0,
+        collection_rate: 0,
+        deposits_held: 0,
+        payments_due_landlords: 0,
+        payments_due_suppliers: 0,
+        monthly_revenue: 0,
+        monthly_expenses: 0,
+        net_profit: 0,
+        cash_flow: 0,
+      });
+    }
+  };
+
+  const fetchSubProperties = async () => {
+    if (!property?.is_parent_property) return;
+    
+    try {
+      setLoadingSubProperties(true);
+      // Fetch sub-properties for this parent property
+      const data = await propertyAPI.list({ 
+        parent_property: property.id,
+        page_size: 100 // Get all sub-properties
+      });
+      setSubProperties(data.results || []);
+    } catch (error) {
+      console.error('Error fetching sub-properties:', error);
+      toast.error('Failed to load sub-properties');
+      setSubProperties([]);
+    } finally {
+      setLoadingSubProperties(false);
     }
   };
 
@@ -260,6 +328,8 @@ export default function PropertyDetailPage() {
     { id: 'maintenance', name: 'Maintenance', icon: WrenchScrewdriverIcon },
     { id: 'documents', name: 'Documents', icon: DocumentTextIcon },
     { id: 'images', name: 'Images', icon: PhotoIcon },
+    // Only show sub-properties tab if this is a parent property
+    ...(property?.is_parent_property ? [{ id: 'sub-properties', name: 'Sub-Properties', icon: BuildingOffice2Icon }] : []),
   ];
 
   return (
@@ -656,6 +726,94 @@ export default function PropertyDetailPage() {
                     ))
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Sub-Properties Tab */}
+            {activeTab === 'sub-properties' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold text-white">Sub-Properties</h3>
+                  <button 
+                    onClick={() => router.push('/dashboard/properties/create-sub-properties')}
+                    className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    Create Sub-Properties
+                  </button>
+                </div>
+
+                {loadingSubProperties ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">Loading sub-properties...</p>
+                  </div>
+                ) : subProperties.length === 0 ? (
+                  <div className="text-center py-8">
+                    <BuildingOffice2Icon className="h-12 w-12 text-muted-foreground/70 mx-auto mb-4" />
+                    <p className="text-muted-foreground">No sub-properties found</p>
+                    <p className="text-sm text-muted-foreground/70 mt-2">
+                      Create sub-properties to manage individual units within this property
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {subProperties.map((subProperty) => (
+                      <div key={subProperty.id} className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-3">
+                            <BuildingOffice2Icon className="h-6 w-6 text-blue-400" />
+                            <div>
+                              <h4 className="font-semibold text-white">{subProperty.name}</h4>
+                              <p className="text-sm text-muted-foreground">{subProperty.property_code}</p>
+                            </div>
+                          </div>
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(subProperty.status)}`}>
+                            {subProperty.status}
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Type:</span>
+                            <span className="text-white">{subProperty.property_type}</span>
+                          </div>
+                          {subProperty.square_meters && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Size:</span>
+                              <span className="text-white">{subProperty.square_meters} m²</span>
+                            </div>
+                          )}
+                          {subProperty.monthly_rental_amount && (
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Rent:</span>
+                              <span className="text-white">R {subProperty.monthly_rental_amount.toLocaleString()}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Address:</span>
+                            <span className="text-white text-right">{subProperty.full_address}</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between">
+                          <button 
+                            onClick={() => router.push(`/dashboard/properties/${subProperty.property_code}`)}
+                            className="text-blue-400 hover:text-blue-300 text-sm font-medium"
+                          >
+                            View Details
+                          </button>
+                          <button 
+                            onClick={() => router.push(`/dashboard/properties/${subProperty.property_code}/edit`)}
+                            className="text-muted-foreground hover:text-white text-sm"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

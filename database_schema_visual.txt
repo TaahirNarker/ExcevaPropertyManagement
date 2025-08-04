@@ -1,0 +1,254 @@
+PROPERTY MANAGEMENT SYSTEM - DATABASE SCHEMA VISUALIZATION
+================================================================
+
+📊 ENTITY RELATIONSHIP OVERVIEW
+================================================================
+
+🏢 CORE ENTITIES
+├── 👤 Users (CustomUser)
+│   ├── 🔑 Primary Key: id
+│   ├── 📧 Unique: email
+│   ├── 🏷️  Role-based access (basic_user → superuser)
+│   └── 🔐 WebAuthn support for passkeys
+│
+├── 🏠 Properties
+│   ├── 🔑 Primary Key: id (UUID)
+│   ├── 🏷️  Auto-generated: property_code (PRO000001)
+│   ├── 🔗 Self-referencing: parent_property (for sub-properties)
+│   ├── 👤 Owner: ForeignKey to Users
+│   └── 🏢 Manager: ForeignKey to Users (optional)
+│
+├── 👥 Tenants
+│   ├── 🔑 Primary Key: id
+│   ├── 🔗 OneToOne: user (CustomUser)
+│   ├── 🏷️  Auto-generated: tenant_code (TEN000001)
+│   └── 🆔 Unique: id_number (Government ID)
+│
+├── 🏦 Landlords
+│   ├── 🔑 Primary Key: id (UUID)
+│   ├── 📧 Unique: email
+│   ├── 🏢 Types: Individual, Company, Trust
+│   └── 🏦 Banking information included
+│
+├── 📄 Leases
+│   ├── 🔑 Primary Key: id
+│   ├── 🔗 Property: ForeignKey to Properties
+│   ├── 🔗 Tenant: ForeignKey to Tenants
+│   └── 💰 Financial: monthly_rent, deposit_amount
+│
+├── 🧾 Invoices (Finance)
+│   ├── 🔑 Primary Key: id
+│   ├── 🏷️  Auto-generated: invoice_number (INV-YYYY-NNNNNN)
+│   ├── 🔗 Lease: ForeignKey to Leases
+│   ├── 🔗 Property: ForeignKey to Properties
+│   ├── 🔗 Tenant: ForeignKey to Tenants
+│   └── 🔒 Locking system: is_locked, locked_at, locked_by
+│
+└── ⚡ Strike Invoices (Bitcoin Payments)
+    ├── 🔑 Primary Key: id (UUID)
+    ├── 🔗 Tenant: ForeignKey to Tenants
+    ├── 🔗 Lease: ForeignKey to Leases (optional)
+    ├── 💰 Amount: amount_zar (ZAR)
+    └── 🏷️  Status: pending → paid
+
+📋 SUPPORTING ENTITIES
+================================================================
+
+📸 Property Media
+├── Property Images
+│   ├── 🔗 Property: ForeignKey to Properties
+│   ├── 🖼️  image_url, image_file
+│   └── 🏷️  is_primary, order
+│
+└── Property Documents
+    ├── 🔗 Property: ForeignKey to Properties
+    ├── 📄 document_type (deed, lease, insurance, etc.)
+    └── 👤 uploaded_by: ForeignKey to Users
+
+📋 Tenant Records
+├── Tenant Documents
+│   ├── 🔗 Tenant: ForeignKey to Tenants
+│   ├── 📄 document_type (id_document, proof_of_income, etc.)
+│   └── ⏰ expires_at (optional)
+│
+└── Tenant Communications
+    ├── 🔗 Tenant: ForeignKey to Tenants
+    ├── 📞 type (email, phone, sms, etc.)
+    └── 👤 created_by: ForeignKey to Users
+
+💰 Financial Records
+├── Invoice Line Items
+│   ├── 🔗 Invoice: ForeignKey to Invoices
+│   ├── 📝 description, category
+│   └── 💰 quantity, unit_price, total
+│
+├── Invoice Audit Log
+│   ├── 🔗 Invoice: ForeignKey to Invoices
+│   ├── 👤 User: ForeignKey to Users
+│   ├── 🔄 action (created, updated, sent, locked, etc.)
+│   └── 📸 invoice_snapshot (JSON)
+│
+├── Invoice Templates
+│   ├── 👤 created_by: ForeignKey to Users
+│   ├── 📝 from_details, to_details, default_notes
+│   └── 📋 default_line_items (JSON)
+│
+└── Invoice Payments
+    ├── 🔗 Invoice: ForeignKey to Invoices
+    ├── 💰 amount, payment_method
+    └── 📅 payment_date
+
+⚡ Bitcoin Payment Flow
+├── Lightning Quotes
+│   ├── 🔗 Strike Invoice: ForeignKey to Strike Invoices
+│   ├── 💰 btc_amount, exchange_rate
+│   ├── ⚡ bolt11 (Lightning payment request)
+│   └── ⏰ expires_at (15 minutes)
+│
+├── Payment Transactions
+│   ├── 🔗 Strike Invoice: OneToOne to Strike Invoices
+│   ├── 🔗 Lightning Quote: ForeignKey to Lightning Quotes
+│   ├── 🔗 transaction_hash (Lightning transaction)
+│   └── 🏷️  status (pending, confirmed, failed)
+│
+└── Webhook Events
+    ├── 📡 event_type (invoice.created, invoice.paid, etc.)
+    ├── 🔗 Strike Invoice: ForeignKey to Strike Invoices (optional)
+    └── 📊 raw_data (JSON), processed
+
+🔗 KEY RELATIONSHIPS
+================================================================
+
+👤 USER HIERARCHY
+Users (CustomUser)
+├── 1:1 → Tenants (via user field)
+├── 1:N → Properties (as owner)
+├── 1:N → Properties (as property_manager)
+├── 1:N → Invoices (as created_by)
+├── 1:N → Invoices (as landlord)
+├── 1:N → Invoice Audit Logs (as user)
+└── 1:N → Invoice Templates (as created_by)
+
+🏠 PROPERTY HIERARCHY
+Properties
+├── 1:N → Properties (self-referencing, parent_property)
+├── 1:N → Property Images
+├── 1:N → Property Documents
+├── 1:N → Leases
+└── 1:N → Invoices
+
+👥 TENANT RELATIONSHIPS
+Tenants
+├── 1:1 ← Users (via user field)
+├── 1:N → Tenant Documents
+├── 1:N → Tenant Communications
+├── 1:N → Leases
+└── 1:N → Strike Invoices
+
+📄 LEASE RELATIONSHIPS
+Leases
+├── N:1 ← Properties
+├── N:1 ← Tenants
+├── 1:N → Invoices
+└── 1:N → Strike Invoices
+
+🧾 INVOICE RELATIONSHIPS
+Invoices
+├── N:1 ← Leases
+├── N:1 ← Properties
+├── N:1 ← Tenants
+├── N:1 ← Users (as created_by)
+├── N:1 ← Users (as landlord)
+├── 1:N → Invoice Line Items
+├── 1:N → Invoice Audit Logs
+├── 1:N → Invoice Payments
+└── 1:N → Invoices (self-referencing, parent_invoice)
+
+⚡ PAYMENT FLOW
+Strike Invoices
+├── N:1 ← Tenants
+├── N:1 ← Leases (optional)
+├── 1:N → Lightning Quotes
+├── 1:1 → Payment Transactions
+└── 1:N → Webhook Events
+
+Lightning Quotes
+├── N:1 ← Strike Invoices
+└── 1:1 → Payment Transactions
+
+🔑 UNIQUE CONSTRAINTS
+================================================================
+
+• Users.email (unique)
+• Properties.property_code (unique, auto-generated)
+• Tenants.tenant_code (unique, auto-generated)
+• Tenants.id_number (unique)
+• Landlords.email (unique)
+• Invoices.invoice_number (unique, auto-generated)
+• Strike Invoices.strike_invoice_id (unique)
+• Lightning Quotes.quote_id (unique)
+• Payment Transactions.transaction_hash (unique)
+• Webhook Events.event_id (unique)
+
+🏷️  AUTO-GENERATED CODES
+================================================================
+
+• Property Codes: PRO000001, PRO000002, ...
+• Tenant Codes: TEN000001, TEN000002, ...
+• Invoice Numbers: INV-2024-000001, INV-2024-000002, ...
+
+🔒 BUSINESS RULES
+================================================================
+
+• One active lease per property at a time
+• One invoice per tenant per month (Bitcoin payments)
+• Sub-properties inherit address from parent property
+• Invoice locking prevents further edits
+• Payment quotes expire after 15 minutes
+• VAT numbers must be 10 digits (companies)
+• ID numbers must be 13 digits (individuals)
+• Square meters must be positive
+
+🎨 COLOR CODING (in visual diagram)
+================================================================
+
+🟠 Orange: User-related entities (Users, Landlords)
+🔵 Cyan: Property-related entities (Properties, Images, Documents)
+🟣 Pink: Tenant-related entities (Tenants, Documents, Communications, Leases)
+🟢 Green: Financial entities (Invoices, Line Items, Audit Log, Templates, Payments)
+🔴 Red: Payment/Bitcoin entities (Strike Invoices, Lightning Quotes, Transactions, Webhooks)
+
+📊 DATABASE STATISTICS
+================================================================
+
+Total Tables: 18
+• Core Entities: 7
+• Supporting Entities: 11
+• Self-referencing Relationships: 2 (Properties, Invoices)
+• Foreign Key Relationships: 25+
+• Unique Constraints: 10
+• Auto-generated Fields: 3
+
+🔧 TECHNICAL DETAILS
+================================================================
+
+• Database: PostgreSQL 13+
+• ORM: Django
+• Primary Keys: UUID (for main entities), Integer (for supporting entities)
+• Timestamps: created_at, updated_at (auto-generated)
+• Soft Deletes: Not implemented (hard deletes with CASCADE)
+• Indexes: Performance indexes on frequently queried fields
+• JSON Fields: Used for flexible data (features, preferences, snapshots)
+• File Storage: URL fields + FileField for uploads
+
+📈 SCALABILITY FEATURES
+================================================================
+
+• UUID primary keys for main entities
+• Proper indexing strategy
+• JSON fields for flexible data
+• Audit logging for compliance
+• Webhook system for real-time updates
+• Role-based access control
+• Multi-currency support (ZAR + BTC)
+• Hierarchical property structure 

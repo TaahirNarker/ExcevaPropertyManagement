@@ -7,7 +7,8 @@ from users.models import CustomUser
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from finance.models import Invoice, Payment
-from tenants.models import Lease, Tenant
+from tenants.models import Tenant
+from leases.models import Lease
 from properties.models import Property
 import io
 

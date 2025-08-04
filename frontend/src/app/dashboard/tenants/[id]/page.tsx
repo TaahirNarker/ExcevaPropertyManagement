@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   UserIcon,
   PhoneIcon,
@@ -19,165 +19,111 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import StatusBadge from '@/components/StatusBadge';
 import { toast } from 'sonner';
+import { tenantApi } from '@/lib/api';
+import { Tenant, LeaseHistory, Document, Communication } from '@/lib/tenant-api';
 
-// Mock tenant interface (replace with actual API types)
-interface Tenant {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  id_number: string;
-  date_of_birth: string;
-  status: 'active' | 'inactive' | 'pending';
-  employment_status: string;
-  employer_name: string;
-  monthly_income: string;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
-  emergency_contact_relationship: string;
-  address: string;
-  city: string;
-  province: string;
-  postal_code: string;
-  notes: string;
-  property_unit: string;
-  lease_end_date: string;
-  rent_amount: number;
-  created_at: string;
-  updated_at: string;
-}
+// Tenant interface is now imported from tenant-api.ts
 
-// Mock lease history interface
-interface LeaseHistory {
-  id: string;
-  property_unit: string;
-  start_date: string;
-  end_date: string;
-  rent_amount: number;
-  status: string;
-}
+// All interfaces are now imported from tenant-api.ts
 
-// Mock document interface
-interface Document {
-  id: string;
-  name: string;
-  type: string;
-  uploaded_at: string;
-  expires_at?: string;
-}
-
-// Mock communication interface
-interface Communication {
-  id: string;
-  type: 'email' | 'phone' | 'sms' | 'note';
-  date: string;
-  subject: string;
-  content: string;
-}
-
-// Mock data
-const mockTenant: Tenant = {
-  id: '1',
-  name: 'John Doe',
-  email: 'john@example.com',
-  phone: '0123456789',
-  id_number: '9001015000000',
-  date_of_birth: '1990-01-01',
-  status: 'active',
-  employment_status: 'Employed',
-  employer_name: 'Tech Corp',
-  monthly_income: '25000',
-  emergency_contact_name: 'Jane Doe',
-  emergency_contact_phone: '0123456780',
-  emergency_contact_relationship: 'Spouse',
-  address: '123 Main Street',
-  city: 'Cape Town',
-  province: 'Western Cape',
-  postal_code: '8001',
-  notes: 'Reliable tenant with good payment history',
-  property_unit: 'Building A - Unit 101',
-  lease_end_date: '2024-12-31',
-  rent_amount: 12000,
-  created_at: '2023-01-01',
-  updated_at: '2024-01-01'
-};
-
-const mockLeaseHistory: LeaseHistory[] = [
-  {
-    id: '1',
-    property_unit: 'Building A - Unit 101',
-    start_date: '2023-01-01',
-    end_date: '2024-12-31',
-    rent_amount: 12000,
-    status: 'active'
-  },
-  {
-    id: '2',
-    property_unit: 'Building B - Unit 201',
-    start_date: '2021-01-01',
-    end_date: '2022-12-31',
-    rent_amount: 10000,
-    status: 'completed'
-  }
-];
-
-const mockDocuments: Document[] = [
-  {
-    id: '1',
-    name: 'ID Document',
-    type: 'identification',
-    uploaded_at: '2023-01-01',
-  },
-  {
-    id: '2',
-    name: 'Lease Agreement',
-    type: 'lease',
-    uploaded_at: '2023-01-01',
-  },
-  {
-    id: '3',
-    name: 'Proof of Income',
-    type: 'financial',
-    uploaded_at: '2023-01-01',
-    expires_at: '2024-12-31'
-  }
-];
-
-const mockCommunications: Communication[] = [
-  {
-    id: '1',
-    type: 'email',
-    date: '2024-01-15',
-    subject: 'Lease Renewal Notice',
-    content: 'Sent lease renewal notification'
-  },
-  {
-    id: '2',
-    type: 'phone',
-    date: '2024-01-10',
-    subject: 'Maintenance Request',
-    content: 'Discussed bathroom leak repair'
-  }
-];
+// Mock data removed - using real API data
 
 export default function TenantDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const tenantId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   
-  // In production, fetch tenant data based on ID
-  const tenant = mockTenant;
+  // State for real API data
+  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [leaseHistory, setLeaseHistory] = useState<LeaseHistory[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [communications, setCommunications] = useState<Communication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Active tab state
   const [activeTab, setActiveTab] = useState<'overview' | 'leases' | 'documents' | 'communications'>('overview');
+  
+  // Fetch tenant data
+  useEffect(() => {
+    const fetchTenantData = async () => {
+      if (!tenantId) return;
+      
+      try {
+        setLoading(true);
+        const [tenantData, leaseHistoryData, documentsData, communicationsData] = await Promise.all([
+          tenantApi.getTenant(tenantId),
+          tenantApi.getTenantLeaseHistory(tenantId),
+          tenantApi.getTenantDocuments(tenantId),
+          tenantApi.getTenantCommunications(tenantId)
+        ]);
+        
+        setTenant(tenantData);
+        setLeaseHistory(leaseHistoryData);
+        setDocuments(documentsData);
+        setCommunications(communicationsData);
+      } catch (error) {
+        console.error('Error fetching tenant data:', error);
+        setError('Failed to load tenant data');
+        toast.error('Failed to load tenant data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchTenantData();
+  }, [tenantId]);
   
   const handleEdit = () => {
     router.push(`/dashboard/tenants/edit/${tenantId}`);
   };
 
   const handleBack = () => {
+    // Check for lease ID in URL parameters first
+    const leaseId = searchParams.get('fromLease');
+    if (leaseId) {
+      router.push(`/dashboard/leases/${leaseId}`);
+      return;
+    }
+    
+    // Fallback to browser history
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+    
+    // Default fallback to tenants list
     router.push('/dashboard/tenants');
   };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading tenant data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !tenant) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <p className="text-red-500 mb-4">{error || 'Tenant not found'}</p>
+            <Button onClick={() => router.push('/dashboard/tenants')}>
+              Back to Tenants
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -293,20 +239,20 @@ export default function TenantDetailPage() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground/70">Property Unit</p>
-                  <p className="font-medium">{tenant.property_unit}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground/70">Lease End Date</p>
-                  <p className="font-medium">{tenant.lease_end_date}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground/70">Monthly Rent</p>
-                  <p className="font-medium">R {tenant.rent_amount.toLocaleString()}</p>
-                </div>
-                <div>
                   <p className="text-sm text-muted-foreground/70">Notes</p>
-                  <p className="font-medium">{tenant.notes}</p>
+                  <p className="font-medium">{tenant.notes || 'No notes available'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground/70">Status</p>
+                  <p className="font-medium capitalize">{tenant.status}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground/70">Created</p>
+                  <p className="font-medium">{new Date(tenant.created_at).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground/70">Last Updated</p>
+                  <p className="font-medium">{new Date(tenant.updated_at).toLocaleDateString()}</p>
                 </div>
               </div>
             </div>
@@ -321,12 +267,15 @@ export default function TenantDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {mockLeaseHistory.map((lease) => (
+              {leaseHistory.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No lease history available</p>
+              ) : (
+                leaseHistory.map((lease) => (
                 <div key={lease.id} className="border-b border-gray-700 pb-4 last:border-0">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
-                      <p className="text-sm text-muted-foreground/70">Property Unit</p>
-                      <p className="font-medium">{lease.property_unit}</p>
+                      <p className="text-sm text-muted-foreground/70">Property</p>
+                      <p className="font-medium">{lease.property_name}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground/70">Period</p>
@@ -342,7 +291,8 @@ export default function TenantDetailPage() {
                     </div>
                   </div>
                 </div>
-              ))}
+              ))
+              )}
             </div>
           </CardContent>
         </Card>
@@ -355,7 +305,10 @@ export default function TenantDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {mockDocuments.map((doc) => (
+              {documents.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No documents available</p>
+              ) : (
+                documents.map((doc) => (
                 <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-700 rounded-lg">
                   <div className="flex items-center gap-3">
                     <DocumentTextIcon className="h-6 w-6 text-muted-foreground/70" />
@@ -371,7 +324,8 @@ export default function TenantDetailPage() {
                     View
                   </Button>
                 </div>
-              ))}
+              ))
+              )}
             </div>
           </CardContent>
         </Card>
@@ -384,7 +338,10 @@ export default function TenantDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {mockCommunications.map((comm) => (
+              {communications.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No communications available</p>
+              ) : (
+                communications.map((comm) => (
                 <div key={comm.id} className="flex items-start gap-4 p-4 border border-gray-700 rounded-lg">
                   <div className="p-2 bg-gray-800 rounded-full">
                     {comm.type === 'email' && <EnvelopeIcon className="h-5 w-5" />}
@@ -401,7 +358,8 @@ export default function TenantDetailPage() {
                     <p className="mt-2 text-sm">{comm.content}</p>
                   </div>
                 </div>
-              ))}
+              ))
+              )}
             </div>
           </CardContent>
         </Card>

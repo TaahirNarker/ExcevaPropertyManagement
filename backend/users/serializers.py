@@ -15,11 +15,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ('email', 'password', 'password_confirm', 'first_name', 'last_name', 
-                 'phone_number', 'is_landlord', 'is_tenant')
+                 'phone_number', 'company', 'role')
         extra_kwargs = {
             'email': {'required': True},
             'first_name': {'required': True},
             'last_name': {'required': True},
+            'role': {'default': 'basic_user'},
         }
     
     def validate(self, attrs):
@@ -57,7 +58,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ('id', 'email', 'username', 'first_name', 'last_name', 'full_name',
-                 'phone_number', 'is_landlord', 'is_tenant', 'date_joined', 'last_login',
+                 'phone_number', 'company', 'role', 'date_joined', 'last_login',
                  'has_passkey')
         read_only_fields = ('id', 'email', 'username', 'date_joined', 'last_login', 'has_passkey')
     

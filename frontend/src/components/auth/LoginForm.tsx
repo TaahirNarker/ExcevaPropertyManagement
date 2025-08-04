@@ -132,8 +132,7 @@ export default function LoginForm() {
       <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20">
         {/* Header */}
         <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
-          <p className="text-gray-300">Sign in to your property management account</p>
+          <h2 className="text-3xl font-bold text-white">Welcome</h2>
         </div>
 
         {/* Login Method Toggle */}

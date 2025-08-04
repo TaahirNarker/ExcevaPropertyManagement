@@ -10,10 +10,7 @@ import { useRouter } from 'next/navigation';
 import { 
   PlusIcon, 
   MagnifyingGlassIcon,
-  AdjustmentsHorizontalIcon,
-  EyeIcon,
-  PencilIcon,
-  TrashIcon
+  AdjustmentsHorizontalIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import { propertyAPI } from '@/lib/api';
@@ -49,6 +46,19 @@ interface Property {
     lease_end?: string;
   };
   owner_name: string;
+  // Sub-property information
+  is_parent_property: boolean;
+  is_sub_property: boolean;
+  sub_properties_count: number;
+  parent_property_name?: string;
+  sub_properties_summary?: {
+    total: number;
+    occupied: number;
+    vacant: number;
+    maintenance: number;
+    reserved: number;
+    total_rental_income: number;
+  };
   created_at: string;
   updated_at: string;
   primary_image?: string;
@@ -109,6 +119,8 @@ export default function PropertiesDashboardPage() {
         status: filters.status || undefined,
         province: filters.province || undefined,
         is_active: filters.is_active ? filters.is_active === 'true' : undefined,
+        // Only exclude sub-properties when not searching
+        exclude_sub_properties: filters.search ? undefined : 'true',
         page: currentPage,
         page_size: pageSize,
       };
@@ -154,28 +166,7 @@ export default function PropertiesDashboardPage() {
     router.push('/dashboard/properties/add');
   };
 
-  const handleViewProperty = (propertyCode: string) => {
-    router.push(`/dashboard/properties/${propertyCode}`);
-  };
 
-  const handleEditProperty = (propertyCode: string) => {
-    router.push(`/dashboard/properties/${propertyCode}/edit`);
-  };
-
-  const handleDeleteProperty = async (propertyCode: string) => {
-    if (!confirm('Are you sure you want to delete this property?')) {
-      return;
-    }
-
-    try {
-      await propertyAPI.delete(propertyCode);
-      toast.success('Property deleted successfully');
-      fetchProperties(); // Refresh the list
-    } catch (error) {
-      console.error('Error deleting property:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to delete property');
-    }
-  };
 
   // Render occupancy status
   const renderOccupancyStatus = (occupancy: Property['occupancy_info']) => {
@@ -227,14 +218,23 @@ export default function PropertiesDashboardPage() {
         <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border mb-6">
           <div className="p-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0 sm:space-x-4">
-              {/* Left side - Add button */}
-              <button
-                onClick={handleAddProperty}
-                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                <PlusIcon className="h-5 w-5 mr-2" />
-                Add a property
-              </button>
+              {/* Left side - Add buttons */}
+              <div className="flex space-x-3">
+                <button
+                  onClick={handleAddProperty}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  <PlusIcon className="h-5 w-5 mr-2" />
+                  Add a property
+                </button>
+                <button
+                  onClick={() => router.push('/dashboard/properties/create-sub-properties')}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                >
+                  <PlusIcon className="h-5 w-5 mr-2" />
+                  Create Sub-Properties
+                </button>
+              </div>
 
               {/* Right side - Search and filters */}
               <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
@@ -385,13 +385,7 @@ export default function PropertiesDashboardPage() {
                       Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Monthly Rent
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Owner
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Actions
+                      Sub-Properties
                     </th>
                   </tr>
                 </thead>
@@ -418,7 +412,7 @@ export default function PropertiesDashboardPage() {
                           <div className="ml-4">
                             <div className="text-sm font-medium text-foreground">
                               <button
-                                onClick={() => handleViewProperty(property.property_code)}
+                                onClick={() => router.push(`/dashboard/properties/${property.property_code}`)}
                                 className="hover:text-blue-400 hover:underline"
                               >
                                 {property.name}
@@ -426,13 +420,24 @@ export default function PropertiesDashboardPage() {
                             </div>
                             <div className="text-sm text-muted-foreground">
                               <button
-                                onClick={() => handleViewProperty(property.property_code)}
+                                onClick={() => router.push(`/dashboard/properties/${property.property_code}`)}
                                 className="hover:text-blue-400 hover:underline"
                               >
                                 {property.property_code}
                               </button>
                             </div>
                             <div className="text-sm text-muted-foreground">{property.property_type_display}</div>
+                            {/* Sub-property information */}
+                            {property.is_sub_property && property.parent_property_name && (
+                              <div className="text-xs text-blue-400 mt-1">
+                                Sub-property of: {property.parent_property_name}
+                              </div>
+                            )}
+                            {property.is_parent_property && property.sub_properties_count > 0 && (
+                              <div className="text-xs text-green-400 mt-1">
+                                Parent property • {property.sub_properties_count} sub-properties
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -443,36 +448,30 @@ export default function PropertiesDashboardPage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         {renderOccupancyStatus(property.occupancy_info)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {property.monthly_rental_amount ? `R ${property.monthly_rental_amount.toLocaleString()}` : 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-foreground">
-                        {property.owner_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => handleViewProperty(property.property_code)}
-                            className="text-blue-400 hover:text-blue-300"
-                            title="View Details"
-                          >
-                            <EyeIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleEditProperty(property.property_code)}
-                            className="text-indigo-400 hover:text-indigo-300"
-                            title="Edit Property"
-                          >
-                            <PencilIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteProperty(property.property_code)}
-                            className="text-red-400 hover:text-red-300"
-                            title="Delete Property"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
-                        </div>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {property.is_parent_property && property.sub_properties_summary ? (
+                          <div className="text-sm">
+                            <div className="text-foreground font-medium">
+                              {property.sub_properties_summary.total} total
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {property.sub_properties_summary.occupied} occupied • {property.sub_properties_summary.vacant} vacant
+                            </div>
+                            {property.sub_properties_summary.total_rental_income > 0 && (
+                              <div className="text-xs text-green-400">
+                                R{property.sub_properties_summary.total_rental_income.toLocaleString()}/month
+                              </div>
+                            )}
+                          </div>
+                        ) : property.is_sub_property ? (
+                          <div className="text-sm text-muted-foreground">
+                            Sub-property
+                          </div>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">
+                            —
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

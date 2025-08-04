@@ -72,6 +72,9 @@ urlpatterns = [
     # Tenants management endpoints
     path('tenants/', include('tenants.urls')),
     
+    # Leases management endpoints
+    path('leases/', include('leases.urls')),
+    
     # Finance management endpoints
     path('finance/', include('finance.urls')),
     
@@ -81,10 +84,16 @@ urlpatterns = [
     # Debt management endpoints
     path('debt-management/', include('debt_management.urls')),
     
+    # Dashboard endpoints
+    path('dashboard/', include('dashboard.urls')),
+    
+    # CRM endpoints
+    path('crm/', include('crm.urls')),
+    
+    # Landlord management endpoints
+    path('', include('landlords.urls')),
+    
     # Placeholder endpoints for frontend development
     path('units/', placeholder_list_view, name='units-list'),
     path('units/<str:pk>/', placeholder_detail_view, name='units-detail'),
-    
-    path('leases/', placeholder_list_view, name='leases-list'),
-    path('leases/<str:pk>/', placeholder_detail_view, name='leases-detail'),
 ] 

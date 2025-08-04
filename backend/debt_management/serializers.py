@@ -4,8 +4,8 @@ from .models import Debtor, DebtDocument, DebtAuditLog, DebtPayment
 
 class DebtorSerializer(serializers.ModelSerializer):
     """Serializer for Debtor model"""
-    assigned_to_name = serializers.CharField(source='assigned_to.get_full_name', read_only=True)
-    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    assigned_to_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
     last_contact_formatted = serializers.SerializerMethodField()
     created_at_formatted = serializers.SerializerMethodField()
     
@@ -20,12 +20,38 @@ class DebtorSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at', 'created_by']
     
     def get_last_contact_formatted(self, obj):
-        if obj.last_contact:
-            return obj.last_contact.strftime('%Y-%m-%d %H:%M')
-        return None
+        try:
+            if obj.last_contact:
+                return obj.last_contact.strftime('%Y-%m-%d %H:%M')
+            return None
+        except Exception as e:
+            print(f"Error formatting last_contact for debtor {obj.id}: {e}")
+            return None
     
     def get_created_at_formatted(self, obj):
-        return obj.created_at.strftime('%Y-%m-%d %H:%M')
+        try:
+            return obj.created_at.strftime('%Y-%m-%d %H:%M')
+        except Exception as e:
+            print(f"Error formatting created_at for debtor {obj.id}: {e}")
+            return 'Unknown'
+    
+    def get_assigned_to_name(self, obj):
+        try:
+            if obj.assigned_to:
+                return obj.assigned_to.get_full_name()
+            return None
+        except Exception as e:
+            print(f"Error getting assigned_to_name for debtor {obj.id}: {e}")
+            return None
+    
+    def get_created_by_name(self, obj):
+        try:
+            if obj.created_by:
+                return obj.created_by.get_full_name()
+            return None
+        except Exception as e:
+            print(f"Error getting created_by_name for debtor {obj.id}: {e}")
+            return None
     
     def create(self, validated_data):
         # Set the created_by field to the current user
@@ -37,7 +63,7 @@ class DebtorSerializer(serializers.ModelSerializer):
 
 class DebtorListSerializer(serializers.ModelSerializer):
     """Simplified serializer for debtor list view"""
-    assigned_to_name = serializers.CharField(source='assigned_to.get_full_name', read_only=True)
+    assigned_to_name = serializers.SerializerMethodField()
     last_contact_formatted = serializers.SerializerMethodField()
     
     class Meta:
@@ -48,14 +74,27 @@ class DebtorListSerializer(serializers.ModelSerializer):
         ]
     
     def get_last_contact_formatted(self, obj):
-        if obj.last_contact:
-            return obj.last_contact.strftime('%Y-%m-%d')
-        return 'Never'
+        try:
+            if obj.last_contact:
+                return obj.last_contact.strftime('%Y-%m-%d')
+            return 'Never'
+        except Exception as e:
+            print(f"Error formatting last_contact for debtor list {obj.id}: {e}")
+            return 'Never'
+    
+    def get_assigned_to_name(self, obj):
+        try:
+            if obj.assigned_to:
+                return obj.assigned_to.get_full_name()
+            return None
+        except Exception as e:
+            print(f"Error getting assigned_to_name for debtor list {obj.id}: {e}")
+            return None
 
 
 class DebtDocumentSerializer(serializers.ModelSerializer):
     """Serializer for DebtDocument model"""
-    uploaded_by_name = serializers.CharField(source='uploaded_by.get_full_name', read_only=True)
+    uploaded_by_name = serializers.SerializerMethodField()
     uploaded_at_formatted = serializers.SerializerMethodField()
     file_url = serializers.SerializerMethodField()
     
@@ -68,14 +107,31 @@ class DebtDocumentSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'uploaded_at', 'uploaded_by']
     
     def get_uploaded_at_formatted(self, obj):
-        return obj.uploaded_at.strftime('%Y-%m-%d %H:%M')
+        try:
+            return obj.uploaded_at.strftime('%Y-%m-%d %H:%M')
+        except Exception as e:
+            print(f"Error formatting uploaded_at for document {obj.id}: {e}")
+            return 'Unknown'
     
     def get_file_url(self, obj):
-        if obj.file:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.file.url)
-        return None
+        try:
+            if obj.file:
+                request = self.context.get('request')
+                if request:
+                    return request.build_absolute_uri(obj.file.url)
+            return None
+        except Exception as e:
+            print(f"Error getting file_url for document {obj.id}: {e}")
+            return None
+    
+    def get_uploaded_by_name(self, obj):
+        try:
+            if obj.uploaded_by:
+                return obj.uploaded_by.get_full_name()
+            return None
+        except Exception as e:
+            print(f"Error getting uploaded_by_name for debt document {obj.id}: {e}")
+            return None
     
     def create(self, validated_data):
         # Set the uploaded_by field to the current user
@@ -87,7 +143,7 @@ class DebtDocumentSerializer(serializers.ModelSerializer):
 
 class DebtAuditLogSerializer(serializers.ModelSerializer):
     """Serializer for DebtAuditLog model"""
-    performed_by_name = serializers.CharField(source='performed_by.get_full_name', read_only=True)
+    performed_by_name = serializers.SerializerMethodField()
     timestamp_formatted = serializers.SerializerMethodField()
     
     class Meta:
@@ -99,7 +155,11 @@ class DebtAuditLogSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'timestamp', 'performed_by']
     
     def get_timestamp_formatted(self, obj):
-        return obj.timestamp.strftime('%Y-%m-%d %H:%M')
+        try:
+            return obj.timestamp.strftime('%Y-%m-%d %H:%M')
+        except Exception as e:
+            print(f"Error formatting timestamp for audit log {obj.id}: {e}")
+            return 'Unknown'
     
     def create(self, validated_data):
         # Set the performed_by field to the current user
@@ -107,11 +167,20 @@ class DebtAuditLogSerializer(serializers.ModelSerializer):
         if request and hasattr(request, 'user'):
             validated_data['performed_by'] = request.user
         return super().create(validated_data)
+    
+    def get_performed_by_name(self, obj):
+        try:
+            if obj.performed_by:
+                return obj.performed_by.get_full_name()
+            return None
+        except Exception as e:
+            print(f"Error getting performed_by_name for audit log {obj.id}: {e}")
+            return None
 
 
 class DebtPaymentSerializer(serializers.ModelSerializer):
     """Serializer for DebtPayment model"""
-    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    created_by_name = serializers.SerializerMethodField()
     payment_date_formatted = serializers.SerializerMethodField()
     
     class Meta:
@@ -123,7 +192,11 @@ class DebtPaymentSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'created_by']
     
     def get_payment_date_formatted(self, obj):
-        return obj.payment_date.strftime('%Y-%m-%d')
+        try:
+            return obj.payment_date.strftime('%Y-%m-%d')
+        except Exception as e:
+            print(f"Error formatting payment_date for payment {obj.id}: {e}")
+            return 'Unknown'
     
     def create(self, validated_data):
         # Set the created_by field to the current user
@@ -131,12 +204,21 @@ class DebtPaymentSerializer(serializers.ModelSerializer):
         if request and hasattr(request, 'user'):
             validated_data['created_by'] = request.user
         return super().create(validated_data)
+    
+    def get_created_by_name(self, obj):
+        try:
+            if obj.created_by:
+                return obj.created_by.get_full_name()
+            return None
+        except Exception as e:
+            print(f"Error getting created_by_name for debt payment {obj.id}: {e}")
+            return None
 
 
 class DebtorDetailSerializer(serializers.ModelSerializer):
     """Detailed serializer for debtor with related data"""
-    assigned_to_name = serializers.CharField(source='assigned_to.get_full_name', read_only=True)
-    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    assigned_to_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
     documents = DebtDocumentSerializer(many=True, read_only=True)
     audit_logs = DebtAuditLogSerializer(many=True, read_only=True)
     payments = DebtPaymentSerializer(many=True, read_only=True)
@@ -153,8 +235,34 @@ class DebtorDetailSerializer(serializers.ModelSerializer):
         ]
     
     def get_total_paid(self, obj):
-        return sum(payment.amount for payment in obj.payments.all())
+        try:
+            return sum(payment.amount for payment in obj.payments.all())
+        except Exception as e:
+            print(f"Error calculating total_paid for debtor {obj.id}: {e}")
+            return 0
     
     def get_remaining_debt(self, obj):
-        total_paid = self.get_total_paid(obj)
-        return max(0, float(obj.total_debt) - total_paid) 
+        try:
+            total_paid = self.get_total_paid(obj)
+            return max(0, float(obj.total_debt) - total_paid)
+        except Exception as e:
+            print(f"Error calculating remaining_debt for debtor {obj.id}: {e}")
+            return float(obj.total_debt) if obj.total_debt else 0
+    
+    def get_assigned_to_name(self, obj):
+        try:
+            if obj.assigned_to:
+                return obj.assigned_to.get_full_name()
+            return None
+        except Exception as e:
+            print(f"Error getting assigned_to_name for debtor detail {obj.id}: {e}")
+            return None
+    
+    def get_created_by_name(self, obj):
+        try:
+            if obj.created_by:
+                return obj.created_by.get_full_name()
+            return None
+        except Exception as e:
+            print(f"Error getting created_by_name for debtor detail {obj.id}: {e}")
+            return None 

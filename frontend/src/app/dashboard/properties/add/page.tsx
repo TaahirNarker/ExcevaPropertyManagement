@@ -15,8 +15,18 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import { propertiesAPI } from '@/lib/properties-api';
+import { landlordApi } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import toast from 'react-hot-toast';
+
+// Bank account interface
+interface BankAccount {
+  id: string;
+  bank_name: string;
+  account_number: string;
+  branch_code: string;
+  account_type: string;
+}
 
 // Property form interface
 interface PropertyFormData {
@@ -31,6 +41,25 @@ interface PropertyFormData {
   bedrooms: number;
   square_meters: number;
   description: string;
+  landlord_id: string;
+  bank_account_id: string;
+  parent_property?: string; // For sub-properties
+}
+
+// Landlord interface
+interface Landlord {
+  id: string;
+  name: string;
+  email: string;
+}
+
+// Parent property interface
+interface ParentProperty {
+  id: string;
+  property_code: string;
+  name: string;
+  property_type: string;
+  full_address: string;
 }
 
 // Form options - matching backend model choices
@@ -78,14 +107,99 @@ export default function AddPropertyPage() {
     bedrooms: 0,
     square_meters: 0,
     description: '',
+    landlord_id: '',
+    bank_account_id: '',
   });
 
   const [loading, setLoading] = useState(false);
+  const [landlords, setLandlords] = useState<Landlord[]>([]);
+  const [loadingLandlords, setLoadingLandlords] = useState(false);
+  const [selectedLandlordBankAccounts, setSelectedLandlordBankAccounts] = useState<BankAccount[]>([]);
+  const [loadingBankAccounts, setLoadingBankAccounts] = useState(false);
+  
+  // Parent property state
+  const [parentProperties, setParentProperties] = useState<ParentProperty[]>([]);
+  const [loadingParentProperties, setLoadingParentProperties] = useState(false);
+  const [showParentPropertyDropdown, setShowParentPropertyDropdown] = useState(false);
+  const [parentPropertySearch, setParentPropertySearch] = useState('');
+  
+
+
+  // Fetch landlords
+  const fetchLandlords = async () => {
+    try {
+      setLoadingLandlords(true);
+      const data = await landlordApi.getLandlords();
+      setLandlords(data);
+    } catch (error) {
+      // Error is already handled in the API, just set empty array
+      setLandlords([]);
+    } finally {
+      setLoadingLandlords(false);
+    }
+  };
+
+  // Fetch parent properties (properties that can have sub-properties)
+  const fetchParentProperties = async () => {
+    try {
+      setLoadingParentProperties(true);
+      const data = await propertiesAPI.getProperties({ page_size: 100 });
+      // Filter to only show properties that don't have a parent (can be parent properties)
+      const potentialParents = data.results.filter((prop: any) => !prop.parent_property);
+      setParentProperties(potentialParents);
+    } catch (error) {
+      console.error('Error fetching parent properties:', error);
+      setParentProperties([]);
+    } finally {
+      setLoadingParentProperties(false);
+    }
+  };
 
   // Initialize component
   useEffect(() => {
-    // Component initialization if needed
+    if (isAuthenticated) {
+      fetchLandlords();
+      fetchParentProperties();
+    }
   }, [isAuthenticated]);
+
+  // Handle clicks outside dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.autocomplete-container')) {
+        setShowParentPropertyDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Fetch bank accounts for selected landlord
+  const fetchLandlordBankAccounts = async (landlordId: string) => {
+    if (!landlordId) {
+      setSelectedLandlordBankAccounts([]);
+      setFormData(prev => ({ ...prev, bank_account_id: '' }));
+      return;
+    }
+
+    try {
+      setLoadingBankAccounts(true);
+      const landlord = await landlordApi.getLandlord(landlordId);
+      setSelectedLandlordBankAccounts(landlord.bank_accounts || []);
+      // Reset bank account selection when landlord changes
+      setFormData(prev => ({ ...prev, bank_account_id: '' }));
+    } catch (error) {
+      console.error('Error fetching landlord bank accounts:', error);
+      setSelectedLandlordBankAccounts([]);
+      setFormData(prev => ({ ...prev, bank_account_id: '' }));
+    } finally {
+      setLoadingBankAccounts(false);
+    }
+  };
 
   // Handle form input changes
   const handleInputChange = (field: keyof PropertyFormData, value: string | number) => {
@@ -93,6 +207,11 @@ export default function AddPropertyPage() {
       ...prev,
       [field]: value
     }));
+
+    // If landlord is changed, fetch their bank accounts
+    if (field === 'landlord_id') {
+      fetchLandlordBankAccounts(value as string);
+    }
   };
 
   // Handle number input changes with increment/decrement
@@ -101,6 +220,22 @@ export default function AddPropertyPage() {
     const newValue = increment ? currentValue + 1 : Math.max(0, currentValue - 1);
     handleInputChange(field, newValue);
   };
+
+  // Filter parent properties based on search
+  const filteredParentProperties = parentProperties.filter(property =>
+    property.name.toLowerCase().includes(parentPropertySearch.toLowerCase()) ||
+    property.property_code.toLowerCase().includes(parentPropertySearch.toLowerCase()) ||
+    property.full_address.toLowerCase().includes(parentPropertySearch.toLowerCase())
+  );
+
+  // Handle parent property selection
+  const handleParentPropertySelect = (property: ParentProperty) => {
+    setFormData(prev => ({ ...prev, parent_property: property.id }));
+    setParentPropertySearch(property.name);
+    setShowParentPropertyDropdown(false);
+  };
+
+
 
   // Removed map functionality for now
 
@@ -149,6 +284,8 @@ export default function AddPropertyPage() {
         bedrooms: formData.bedrooms || undefined,
         square_meters: formData.square_meters || undefined,
         description: formData.description || undefined,
+        landlord_id: formData.landlord_id || undefined,
+        bank_account_id: formData.bank_account_id || undefined,
         status: 'vacant', // Default status
       };
 
@@ -322,15 +459,7 @@ export default function AddPropertyPage() {
             </div>
           </div>
 
-          {/* Additional Options (Optional) */}
-          <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
-            <div className="space-y-6">
-              <div className="text-center text-muted-foreground">
-                <p className="text-sm">Additional property management features</p>
-                <p className="text-xs mt-1">Landlord and bank account management can be configured after property creation</p>
-              </div>
-            </div>
-          </div>
+
 
           {/* Property Details */}
           <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
@@ -351,6 +480,119 @@ export default function AddPropertyPage() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Parent Property (Optional) */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Parent Property (Optional)
+                </label>
+                <div className="relative autocomplete-container" style={{ position: 'relative', zIndex: 1000 }}>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={parentPropertySearch}
+                      onChange={(e) => {
+                        setParentPropertySearch(e.target.value);
+                        setShowParentPropertyDropdown(true);
+                      }}
+                      onFocus={() => setShowParentPropertyDropdown(true)}
+                      placeholder={loadingParentProperties ? 'Loading properties...' : 'Search parent property...'}
+                      disabled={loadingParentProperties}
+                      className="block w-full px-3 py-2 pr-10 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <div className="absolute right-3 top-2.5 h-5 w-5 text-muted-foreground">
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  {showParentPropertyDropdown && filteredParentProperties.length > 0 && (
+                    <div className="autocomplete-dropdown w-full mt-1 bg-card/95 backdrop-blur-lg border border-border rounded-md shadow-xl max-h-60 overflow-auto">
+                      {filteredParentProperties.map(property => (
+                        <div
+                          key={property.id}
+                          onClick={() => handleParentPropertySelect(property)}
+                          className="px-4 py-2 hover:bg-primary/10 cursor-pointer border-b border-border/50 last:border-b-0 transition-colors"
+                        >
+                          <div className="font-medium text-foreground">{property.name}</div>
+                          <div className="text-sm text-muted-foreground">{property.property_code} • {property.full_address}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {showParentPropertyDropdown && filteredParentProperties.length === 0 && parentPropertySearch && (
+                    <div className="autocomplete-dropdown w-full mt-1 bg-card/95 backdrop-blur-lg border border-border rounded-md shadow-xl">
+                      <div className="px-4 py-2 text-muted-foreground">No properties found</div>
+                    </div>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Select a parent property if this is a sub-property (e.g., individual apartment in a block)
+                </p>
+              </div>
+
+              {/* Landlord */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Assign to Landlord
+                </label>
+                <select
+                  value={formData.landlord_id}
+                  onChange={(e) => handleInputChange('landlord_id', e.target.value)}
+                  disabled={loadingLandlords}
+                  className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">
+                    {loadingLandlords 
+                      ? 'Loading landlords...' 
+                      : landlords.length === 0 
+                        ? 'No landlords available' 
+                        : '-- Select a landlord --'
+                    }
+                  </option>
+                  {landlords.map(landlord => (
+                    <option key={landlord.id} value={landlord.id}>
+                      {landlord.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Bank Account */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Bank Account for Payments
+                </label>
+                <select
+                  value={formData.bank_account_id}
+                  onChange={(e) => handleInputChange('bank_account_id', e.target.value)}
+                  disabled={loadingBankAccounts || !formData.landlord_id || selectedLandlordBankAccounts.length === 0}
+                  className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">
+                    {!formData.landlord_id 
+                      ? 'Select a landlord first' 
+                      : loadingBankAccounts 
+                        ? 'Loading bank accounts...' 
+                        : selectedLandlordBankAccounts.length === 0 
+                          ? 'No bank accounts available for this landlord' 
+                          : '-- Select a bank account --'
+                    }
+                  </option>
+                  {selectedLandlordBankAccounts.map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.bank_name} - {account.account_type} ({account.account_number.slice(-4)})
+                    </option>
+                  ))}
+                </select>
+                {formData.landlord_id && selectedLandlordBankAccounts.length === 0 && !loadingBankAccounts && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    This landlord has no bank accounts. Add bank accounts in the landlord details.
+                  </p>
+                )}
               </div>
 
               {/* Bedrooms */}
@@ -435,6 +677,7 @@ export default function AddPropertyPage() {
             </div>
           </div>
         </form>
+
 
 
       </div>

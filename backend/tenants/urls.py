@@ -1,8 +1,6 @@
 from django.urls import path
 from . import views
 
-app_name = 'tenants'
-
 urlpatterns = [
     # Tenant CRUD operations
     path('', views.TenantListCreateView.as_view(), name='tenant-list'),
@@ -16,4 +14,7 @@ urlpatterns = [
     # Tenant communications
     path('<str:tenant_code>/communications/', views.TenantCommunicationListCreateView.as_view(), name='tenant-communications'),
     path('<str:tenant_code>/communications/<int:pk>/', views.TenantCommunicationDetailView.as_view(), name='tenant-communication-detail'),
+    
+    # Choices for dropdowns
+    path('choices/tenants/', views.tenant_choices, name='tenant-choices'),
 ] 

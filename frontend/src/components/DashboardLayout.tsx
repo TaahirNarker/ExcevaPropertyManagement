@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, ReactNode } from 'react';
+import { useState, ReactNode, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { 
   BuildingOfficeIcon, 
@@ -40,7 +40,16 @@ import ThemeToggle from '@/components/ThemeToggle';
 // Navigation items
 const navigationItems = [
   { name: 'Home', icon: HomeIcon, href: '/dashboard', current: false },
-  { name: 'Finance', icon: CurrencyDollarIcon, href: '/dashboard/finance', current: false },
+  { 
+    name: 'Finance', 
+    icon: CurrencyDollarIcon, 
+    href: '/dashboard/finance', 
+    current: false,
+    subItems: [
+      { name: 'Master Finance', href: '/dashboard/finance/master' },
+      { name: 'Administration', href: '/dashboard/finance/administration' }
+    ]
+  },
   { name: 'Properties', icon: BuildingOfficeIcon, href: '/dashboard/properties', current: false },
   { name: 'Leases', icon: ClipboardDocumentListIcon, href: '/dashboard/leases', current: false },
   { name: 'Tenants', icon: UserGroupIcon, href: '/dashboard/tenants', current: false },
@@ -66,6 +75,17 @@ export default function DashboardLayout({ children, title, subtitle }: Dashboard
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [isClient, setIsClient] = useState(false);
+
+  // Handle localStorage initialization after component mounts
+  useEffect(() => {
+    setIsClient(true);
+    const savedDropdown = localStorage.getItem('sidebarOpenDropdown');
+    if (savedDropdown) {
+      setOpenDropdown(savedDropdown);
+    }
+  }, []);
 
   // Update navigation items with current state
   const currentNavigationItems = navigationItems.map(item => ({
@@ -93,11 +113,14 @@ export default function DashboardLayout({ children, title, subtitle }: Dashboard
       <FluidBackground />
       
       {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} ${
-        theme === 'dark' 
-          ? 'bg-white/10 backdrop-blur-lg border-r border-white/20' 
-          : 'bg-white/80 backdrop-blur-lg border-r border-gray-200 shadow-lg'
-      } transition-all duration-300 ease-in-out`}>
+      <div 
+        data-sidebar="true"
+        className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-16' : 'w-64'} ${
+          theme === 'dark' 
+            ? 'bg-white/10 backdrop-blur-lg border-r border-white/20' 
+            : 'bg-white/80 backdrop-blur-lg border-r border-gray-200 shadow-lg'
+        } transition-all duration-300 ease-in-out`}
+      >
         <div className="flex flex-col h-full">
           {/* Sidebar Header */}
           <div className={`flex items-center justify-between h-16 px-4 border-b ${
@@ -131,23 +154,87 @@ export default function DashboardLayout({ children, title, subtitle }: Dashboard
           {/* Navigation Items */}
           <nav className="flex-1 px-2 py-4 space-y-2">
             {currentNavigationItems.map((item) => (
-              <button
-                key={item.name}
-                onClick={() => handleNavigation(item.href)}
-                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+              <div key={item.name} className="relative">
+                <div className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
                   item.current
                     ? 'bg-blue-600 text-white'
                     : theme === 'dark'
                       ? 'text-gray-300 hover:bg-white/10 hover:text-white'
                       : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
-                }`}
-                title={sidebarCollapsed ? item.name : undefined}
-              >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
-                {!sidebarCollapsed && (
-                  <span className="ml-3">{item.name}</span>
+                }`}>
+                  <button
+                    onClick={() => {
+                      if (item.subItems) {
+                        // Always navigate to the main page first
+                        handleNavigation(item.href);
+                      } else {
+                        handleNavigation(item.href);
+                      }
+                    }}
+                    className="flex items-center flex-1"
+                    title={sidebarCollapsed ? item.name : undefined}
+                  >
+                    <item.icon className="h-5 w-5 flex-shrink-0" />
+                    {!sidebarCollapsed && (
+                      <span className="ml-3">{item.name}</span>
+                    )}
+                  </button>
+                  {!sidebarCollapsed && item.subItems && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent parent button click
+                        const newState = openDropdown === item.name ? null : item.name;
+                        setOpenDropdown(newState);
+                        // Save to localStorage for persistence
+                        if (typeof window !== 'undefined') {
+                          if (newState) {
+                            localStorage.setItem('sidebarOpenDropdown', newState);
+                          } else {
+                            localStorage.removeItem('sidebarOpenDropdown');
+                          }
+                        }
+                      }}
+                      className="p-1 hover:bg-white/10 rounded transition-colors"
+                    >
+                      <svg 
+                        className={`h-4 w-4 transition-transform ${isClient && openDropdown === item.name ? 'rotate-180' : ''}`}
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                
+                {/* Dropdown Menu */}
+                {item.subItems && isClient && openDropdown === item.name && !sidebarCollapsed && (
+                  <div className={`ml-4 mt-1 space-y-1 ${
+                    theme === 'dark' 
+                      ? 'bg-gray-800 border border-gray-700' 
+                      : 'bg-gray-50 border border-gray-200'
+                  } rounded-lg p-2`}>
+                    {item.subItems.map((subItem) => (
+                      <button
+                        key={subItem.name}
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevent dropdown from closing
+                          handleNavigation(subItem.href);
+                          // Don't close the dropdown - keep it open
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                          theme === 'dark'
+                            ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                        }`}
+                      >
+                        {subItem.name}
+                      </button>
+                    ))}
+                  </div>
                 )}
-              </button>
+              </div>
             ))}
           </nav>
 

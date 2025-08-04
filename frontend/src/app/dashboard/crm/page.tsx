@@ -26,6 +26,8 @@ import {
 } from '@heroicons/react/24/outline';
 import DashboardLayout from '@/components/DashboardLayout';
 import LeadForm from '@/components/LeadForm';
+import { crmAPI, Lead as APILead, Contact as APIContact, Communication as APICommunication, Task as APITask } from '@/lib/crm-api';
+import { toast } from 'react-hot-toast';
 
 // Types
 interface Lead {
@@ -80,140 +82,50 @@ interface Task {
   createdAt: string;
 }
 
-// Mock data - moved outside component to avoid recreation
-const mockLeads: Lead[] = [
-  {
-    id: '1',
-    name: 'John Smith',
-    email: 'john.smith@email.com',
-    phone: '+27 82 123 4567',
-    source: 'Property24',
-    stage: 'Qualified',
-    assignedTo: 'Sarah Johnson',
-    propertyInterest: 'Sunset Villas Unit 101',
-    notes: 'Interested in 2-bedroom apartment. Budget R15,000/month.',
-    createdAt: '2024-01-15',
-    lastContact: '2024-01-20',
-    nextFollowUp: '2024-01-25'
-  },
-  {
-    id: '2',
-    name: 'Maria Garcia',
-    email: 'maria.garcia@email.com',
-    phone: '+27 83 987 6543',
-    source: 'Facebook',
-    stage: 'Viewing Scheduled',
-    assignedTo: 'Mike Wilson',
-    propertyInterest: 'Ocean View Complex Unit 205',
-    notes: 'Scheduled viewing for Saturday 2pm. Prefers ground floor.',
-    createdAt: '2024-01-18',
-    lastContact: '2024-01-22'
-  }
-];
-
-const mockContacts: Contact[] = [
-  {
-    id: '1',
-    name: 'John Smith',
-    type: 'Prospective Tenant',
-    email: 'john.smith@email.com',
-    phone: '+27 82 123 4567',
-    address: '123 Main St, Cape Town',
-    emergencyContact: '+27 82 123 4568',
-    documents: ['ID Document', 'Proof of Income'],
-    linkedProperties: ['Sunset Villas Unit 101'],
-    createdAt: '2024-01-15'
-  },
-  {
-    id: '2',
-    name: 'David Mokoena',
-    type: 'Current Tenant',
-    email: 'david.mokoena@email.com',
-    phone: '+27 84 555 1234',
-    address: '456 Oak Ave, Johannesburg',
-    emergencyContact: '+27 84 555 1235',
-    documents: ['Lease Agreement', 'ID Document'],
-    linkedProperties: ['Parkview Apartments Unit 302'],
-    createdAt: '2023-06-10'
-  }
-];
-
-const mockCommunications: Communication[] = [
-  {
-    id: '1',
-    contactId: '1',
-    type: 'Call',
-    direction: 'Outbound',
-    content: 'Follow-up call about viewing appointment',
-    timestamp: '2024-01-20T10:30:00',
-    duration: 5
-  },
-  {
-    id: '2',
-    contactId: '1',
-    type: 'Email',
-    direction: 'Outbound',
-    subject: 'Property Viewing Confirmation',
-    content: 'Hi John, confirming your viewing appointment...',
-    timestamp: '2024-01-19T14:15:00'
-  }
-];
-
-const mockTasks: Task[] = [
-  {
-    id: '1',
-    title: 'Follow up with Mr. Mokoena on viewing',
-    description: 'Call to confirm viewing appointment for Saturday',
-    assignedTo: 'Sarah Johnson',
-    dueDate: '2024-01-25',
-    priority: 'High',
-    status: 'Pending',
-    relatedContact: 'John Smith',
-    relatedProperty: 'Sunset Villas Unit 101',
-    createdAt: '2024-01-20'
-  },
-  {
-    id: '2',
-    title: 'Send lease agreement to Maria Garcia',
-    description: 'Prepare and send lease agreement after successful viewing',
-    assignedTo: 'Mike Wilson',
-    dueDate: '2024-01-28',
-    priority: 'Medium',
-    status: 'In Progress',
-    relatedContact: 'Maria Garcia',
-    relatedProperty: 'Ocean View Complex Unit 205',
-    createdAt: '2024-01-22'
-  }
-];
+// Mock data removed - using real API data
 
 export default function CRMDashboardPage() {
   // State
   const [activeTab, setActiveTab] = useState('leads');
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [communications, setCommunications] = useState<Communication[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
+  const [leads, setLeads] = useState<APILead[]>([]);
+  const [contacts, setContacts] = useState<APIContact[]>([]);
+  const [communications, setCommunications] = useState<APICommunication[]>([]);
+  const [tasks, setTasks] = useState<APITask[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Lead form state
   const [isLeadFormOpen, setIsLeadFormOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [leadFormMode, setLeadFormMode] = useState<'add' | 'edit'>('add');
 
-  // Load data only when needed
+  // Load data from API
   useEffect(() => {
-    if (!dataLoaded) {
-      setLoading(true);
-      // Remove artificial delay - load data immediately
-      setLeads(mockLeads);
-      setContacts(mockContacts);
-      setCommunications(mockCommunications);
-      setTasks(mockTasks);
-      setDataLoaded(true);
-      setLoading(false);
-    }
-  }, [dataLoaded]);
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const [leadsData, contactsData, communicationsData, tasksData] = await Promise.all([
+          crmAPI.getLeads(),
+          crmAPI.getContacts(),
+          crmAPI.getCommunications(),
+          crmAPI.getTasks()
+        ]);
+        
+        setLeads(leadsData);
+        setContacts(contactsData);
+        setCommunications(communicationsData);
+        setTasks(tasksData);
+      } catch (error) {
+        console.error('Error fetching CRM data:', error);
+        setError('Failed to load CRM data');
+        toast.error('Failed to load CRM data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, []);
 
   // Tab configuration
   const tabs = [
@@ -284,12 +196,31 @@ export default function CRMDashboardPage() {
     return colors[status];
   };
 
-  // Only show loading for initial data load
-  if (loading && !dataLoaded) {
+  // Show loading state
+  if (loading) {
     return (
       <DashboardLayout title="CRM">
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <DashboardLayout title="CRM">
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <p className="text-red-500 mb-4">{error}</p>
+            <button 
+              onClick={() => window.location.reload()} 
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </DashboardLayout>
     );

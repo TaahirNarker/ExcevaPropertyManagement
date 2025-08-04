@@ -36,7 +36,7 @@ class StripeInvoice(models.Model):
     
     # Tenant and lease information
     tenant = models.ForeignKey('tenants.Tenant', on_delete=models.CASCADE, related_name='lightning_invoices')
-    lease = models.ForeignKey('tenants.Lease', on_delete=models.CASCADE, related_name='lightning_invoices', null=True, blank=True)
+    lease = models.ForeignKey('leases.Lease', on_delete=models.CASCADE, related_name='lightning_invoices', null=True, blank=True)
     
     # Invoice details in ZAR
     amount_zar = models.DecimalField(max_digits=10, decimal_places=2, help_text="Amount in ZAR")

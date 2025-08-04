@@ -17,7 +17,6 @@ class DebtorViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing debtors
     """
-    queryset = Debtor.objects.all()
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'assigned_to']
@@ -25,12 +24,37 @@ class DebtorViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'total_debt', 'created_at', 'last_contact']
     ordering = ['-created_at']
     
+    def get_queryset(self):
+        """Optimized queryset with select_related and prefetch_related"""
+        try:
+            return Debtor.objects.select_related('assigned_to').prefetch_related(
+                'documents',
+                'payments',
+                'audit_logs'
+            ).all()
+        except Exception as e:
+            print(f"Error in debtor queryset: {e}")
+            # Fallback to basic query if prefetch fails
+            return Debtor.objects.select_related('assigned_to').all()
+    
     def get_serializer_class(self):
         if self.action == 'list':
             return DebtorListSerializer
         elif self.action == 'retrieve':
             return DebtorDetailSerializer
         return DebtorSerializer
+    
+    def list(self, request, *args, **kwargs):
+        try:
+            return super().list(request, *args, **kwargs)
+        except Exception as e:
+            print(f"Error in debtor list view: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            return Response(
+                {'error': f'Failed to fetch debtors: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     def perform_create(self, serializer):
         debtor = serializer.save()
@@ -160,11 +184,18 @@ class DebtDocumentViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing debt documents
     """
-    queryset = DebtDocument.objects.all()
     permission_classes = [IsAuthenticated]
     serializer_class = DebtDocumentSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['debtor', 'document_type']
+    
+    def get_queryset(self):
+        """Optimized queryset with select_related"""
+        try:
+            return DebtDocument.objects.select_related('debtor', 'uploaded_by').all()
+        except Exception as e:
+            print(f"Error in debt document queryset: {e}")
+            return DebtDocument.objects.all()
     
     def perform_create(self, serializer):
         document = serializer.save()
@@ -182,11 +213,18 @@ class DebtPaymentViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing debt payments
     """
-    queryset = DebtPayment.objects.all()
     permission_classes = [IsAuthenticated]
     serializer_class = DebtPaymentSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['debtor', 'payment_method']
+    
+    def get_queryset(self):
+        """Optimized queryset with select_related"""
+        try:
+            return DebtPayment.objects.select_related('debtor', 'created_by').all()
+        except Exception as e:
+            print(f"Error in debt payment queryset: {e}")
+            return DebtPayment.objects.all()
     
     def perform_create(self, serializer):
         payment = serializer.save()
@@ -208,9 +246,16 @@ class DebtAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing debt audit logs (read-only)
     """
-    queryset = DebtAuditLog.objects.all()
     permission_classes = [IsAuthenticated]
     serializer_class = DebtAuditLogSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['debtor', 'action']
-    ordering = ['-timestamp'] 
+    ordering = ['-timestamp']
+    
+    def get_queryset(self):
+        """Optimized queryset with select_related"""
+        try:
+            return DebtAuditLog.objects.select_related('debtor', 'performed_by').all()
+        except Exception as e:
+            print(f"Error in debt audit log queryset: {e}")
+            return DebtAuditLog.objects.all() 

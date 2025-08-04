@@ -6,8 +6,24 @@ class CustomUser(AbstractUser):
     Custom user model that extends Django's AbstractUser.
     Includes additional fields for property management and WebAuthn support.
     """
+    # User roles
+    USER_ROLES = [
+        ('basic_user', 'Basic User'),
+        ('tenant', 'Tenant'),
+        ('landlord', 'Landlord'),
+        ('maintenance_operator', 'Maintenance Operator'),
+        ('property_administrator', 'Property Administrator'),
+        ('finance_administrator', 'Finance Administrator'),
+        ('manager', 'Manager'),
+        ('superuser', 'SuperUser'),
+    ]
+    
     # User profile fields
     phone_number = models.CharField(max_length=20, blank=True)
+    company = models.CharField(max_length=255, blank=True, help_text="Company or organization the user belongs to")
+    role = models.CharField(max_length=50, choices=USER_ROLES, default='basic_user', help_text="User's role in the system")
+    
+    # Legacy fields for backward compatibility
     is_landlord = models.BooleanField(default=False)
     is_tenant = models.BooleanField(default=False)
     
@@ -46,3 +62,59 @@ class CustomUser(AbstractUser):
     def has_passkey(self):
         """Check if user has a registered passkey."""
         return bool(self.webauthn_credentials)
+    
+    @property
+    def is_basic_user(self):
+        """Check if user is a basic user."""
+        return self.role == 'basic_user'
+    
+    @property
+    def is_tenant_role(self):
+        """Check if user has tenant role."""
+        return self.role == 'tenant'
+    
+    @property
+    def is_landlord_role(self):
+        """Check if user has landlord role."""
+        return self.role == 'landlord'
+    
+    @property
+    def is_maintenance_operator(self):
+        """Check if user is a maintenance operator."""
+        return self.role == 'maintenance_operator'
+    
+    @property
+    def is_property_administrator(self):
+        """Check if user is a property administrator."""
+        return self.role == 'property_administrator'
+    
+    @property
+    def is_finance_administrator(self):
+        """Check if user is a finance administrator."""
+        return self.role == 'finance_administrator'
+    
+    @property
+    def is_manager(self):
+        """Check if user is a manager."""
+        return self.role == 'manager'
+    
+    @property
+    def is_superuser_role(self):
+        """Check if user has superuser role."""
+        return self.role == 'superuser'
+    
+    def has_role_permission(self, required_role):
+        """Check if user has the required role or higher."""
+        role_hierarchy = {
+            'basic_user': 0,
+            'tenant': 1,
+            'landlord': 2,
+            'maintenance_operator': 3,
+            'property_administrator': 4,
+            'finance_administrator': 4,
+            'manager': 5,
+            'superuser': 6,
+        }
+        user_level = role_hierarchy.get(self.role, 0)
+        required_level = role_hierarchy.get(required_role, 0)
+        return user_level >= required_level

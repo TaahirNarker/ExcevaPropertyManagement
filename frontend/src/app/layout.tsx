@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   description: 'Professional property portfolio management platform for landlords and property managers',
   keywords: ['property management', 'real estate', 'landlord', 'tenant', 'portfolio'],
   authors: [{ name: 'Property Management Team' }],
+  icons: {
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 };
 
 export const viewport: Viewport = {

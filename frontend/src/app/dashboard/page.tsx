@@ -25,23 +25,10 @@ import {
 import { useAuth, withAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import { useRouter } from 'next/navigation';
+import { dashboardAPI, DashboardMetrics } from '@/lib/dashboard-api';
+import { toast } from 'react-hot-toast';
 
-// Updated DashboardMetrics interface (unchanged, but commented for clarity)
-interface DashboardMetrics {
-  // Financial metrics
-  invoicesDue: { count: number; breakdown: { sent: number; readyToSend: number; currentPeriod: number; dismissed: number; }; };
-  rentDue: { count: number; breakdown: { collected: number; outstanding: number; }; };
-  billsDue: { count: number; breakdown: { toVendors: number; withCashflow: number; }; };
-  feesDue: { count: number; breakdown: { dueToYou: number; withCashflow: number; }; };
-  payments: { count: number; breakdown: { landlords: number; paymentDue: number; }; };
-  // Property & Lease metrics
-  properties: { count: number; breakdown: { occupied: number; vacant: number; }; };
-  leases: { count: number; breakdown: { active: number; expired: number; }; };
-  renewals: { count: number; breakdown: { dueIn: number; days90: number; days60: number; days30: number; }; };
-  // Deposit metrics
-  depositsDue: { count: number; breakdown: { partialHeld: number; withoutDeposit: number; }; };
-  depositsHeld: { count: number; breakdown: { byLandlord: number; byAgent: number; }; };
-}
+// DashboardMetrics interface is now imported from dashboard-api.ts
 
 interface RadialProgressProps {
   percentage: number;
@@ -158,94 +145,36 @@ function DashboardPage() {
   });
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
 
-  // Fetch dashboard data (unchanged, but added error handling comments)
+  // Fetch dashboard data from API
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        // Simulate API delay (replace with real API call to backend)
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Mock data (as before; in production, fetch from /api/dashboard)
-        const mockData: DashboardMetrics = {
-          invoicesDue: {
-            count: 0,
-            breakdown: {
-              sent: 1,
-              readyToSend: 0,
-              currentPeriod: 0,
-              dismissed: 0
-            }
-          },
-          rentDue: {
-            count: 0,
-            breakdown: {
-              collected: 1,
-              outstanding: 0
-            }
-          },
-          billsDue: {
-            count: 0,
-            breakdown: {
-              toVendors: 0,
-              withCashflow: 0
-            }
-          },
-          properties: {
-            count: 4,
-            breakdown: {
-              occupied: 1,
-              vacant: 3
-            }
-          },
-          leases: {
-            count: 1,
-            breakdown: {
-              active: 1,
-              expired: 0
-            }
-          },
-          renewals: {
-            count: 0,
-            breakdown: {
-              dueIn: 0,
-              days90: 0,
-              days60: 0,
-              days30: 0
-            }
-          },
-          depositsDue: {
-            count: 0,
-            breakdown: {
-              partialHeld: 0,
-              withoutDeposit: 0
-            }
-          },
-          depositsHeld: {
-            count: 1,
-            breakdown: {
-              byLandlord: 0,
-              byAgent: 1
-            }
-          },
-          feesDue: {
-            count: 0,
-            breakdown: {
-              dueToYou: 0,
-              withCashflow: 0
-            }
-          },
-          payments: {
-            count: 1,
-            breakdown: {
-              landlords: 1,
-              paymentDue: 1
-            }
-          }
-        };
-        setDashboardData(mockData);
+        const data = await dashboardAPI.getDashboardMetrics();
+        setDashboardData(data);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
-        // TODO: Add user notification for fetch errors
+        
+        // Check if it's an authentication error
+        if (error instanceof Error && error.message.includes('No authentication token found')) {
+          toast.error('Please log in to view dashboard data');
+          // The withAuth HOC should handle redirecting to login
+          return;
+        }
+        
+        // Set default empty data on other errors
+        setDashboardData({
+          invoicesDue: { count: 0, breakdown: { sent: 0, readyToSend: 0, currentPeriod: 0, dismissed: 0 } },
+          rentDue: { count: 0, breakdown: { collected: 0, outstanding: 0 } },
+          billsDue: { count: 0, breakdown: { toVendors: 0, withCashflow: 0 } },
+          feesDue: { count: 0, breakdown: { dueToYou: 0, withCashflow: 0 } },
+          payments: { count: 0, breakdown: { landlords: 0, paymentDue: 0 } },
+          properties: { count: 0, breakdown: { occupied: 0, vacant: 0 } },
+          leases: { count: 0, breakdown: { active: 0, expired: 0 } },
+          renewals: { count: 0, breakdown: { dueIn: 0, days90: 0, days60: 0, days30: 0 } },
+          depositsDue: { count: 0, breakdown: { partialHeld: 0, withoutDeposit: 0 } },
+          depositsHeld: { count: 0, breakdown: { byLandlord: 0, byAgent: 0 } }
+        });
+        toast.error('Failed to load dashboard data');
       } finally {
         setIsLoading(false);
       }

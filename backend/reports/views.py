@@ -8,7 +8,7 @@ from reportlab.lib import colors
 import openpyxl
 from io import BytesIO
 from finance.models import Invoice, InvoicePayment
-from tenants.models import Lease
+from leases.models import Lease
 from properties.models import Property
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated

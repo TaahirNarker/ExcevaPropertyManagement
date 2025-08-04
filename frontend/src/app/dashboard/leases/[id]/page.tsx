@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import DashboardLayout from "@/components/DashboardLayout";
 import {
@@ -35,31 +35,56 @@ import { format, subMonths, addMonths } from 'date-fns';
 import { z } from 'zod';
 import { API_BASE_URL } from '@/lib/auth';  // Import API_BASE_URL from auth.ts
 import { authService } from '@/lib/auth';  // Import authService for token access
+import LeaseAttachments from '@/components/LeaseAttachments';
+import LeaseNotes from '@/components/LeaseNotes';
+import { LeaseAPI } from '@/lib/lease-api';
 
 // --- Mock Data Definitions ---
 
-// Lease interface
+// Lease interface - matches backend API response
 interface Lease {
-  id: string;
-  lease_code: string;
-  property_name: string;
-  property_code: string;
-  tenant_name: string;
-  tenant_code: string;
-  landlord_name: string;
-  landlord_code: string;
+  id: number;
+  property: {
+    id: string;
+    property_code: string;
+    name: string;
+    address: string;
+  };
+  tenant: {
+    id: number;
+    tenant_code: string;
+    name: string;
+    email: string;
+  };
+  landlord?: {
+    id: string;
+    name: string;
+    email: string;
+  };
   start_date: string;
   end_date: string;
   monthly_rent: number;
-  deposit: number;
+  deposit_amount: number;
   status: string;
   lease_type: string;
   rental_frequency: string;
+  rent_due_day: number;
+  late_fee_type: string;
+  late_fee_percentage: number;
+  late_fee_amount: number;
+  grace_period_days: number;
+  lease_duration_months: number;
+  auto_renew: boolean;
+  notice_period_days: number;
+  pro_rata_amount: number;
+  invoice_date: string;
+  management_fee: number;
+  procurement_fee: number;
+  terms: string;
+  notes: string;
   created_at: string;
   updated_at: string;
-  days_until_expiry: number;
-  is_expired: boolean;
-  is_expiring_soon: boolean;
+  attachments_count: number;
 }
 
 // Invoice line item interface
@@ -84,28 +109,9 @@ interface InvoiceFormData {
   showBankDetails: boolean;
 }
 
-const mockLeases: Lease[] = [
-  {
-    id: '1', lease_code: 'LSE000001', property_name: 'Sunset Apartment 2A', property_code: 'PRO000001', tenant_name: 'John Smith', tenant_code: 'TEN000001', landlord_name: 'Sarah Johnson', landlord_code: 'LAN000001', start_date: '2024-01-01', end_date: '2024-12-31', monthly_rent: 12000, deposit: 24000, status: 'Active', lease_type: 'Fixed', rental_frequency: 'Monthly', created_at: '2023-12-15T10:30:00Z', updated_at: '2023-12-15T10:30:00Z', days_until_expiry: 45, is_expired: false, is_expiring_soon: true,
-  },
-  {
-    id: '2', lease_code: 'LSE000002', property_name: 'Garden Villa 15', property_code: 'PRO000002', tenant_name: 'Michael Chen', tenant_code: 'TEN000002', landlord_name: 'Emma Williams', landlord_code: 'LAN000002', start_date: '2023-06-01', end_date: '2025-05-31', monthly_rent: 18500, deposit: 37000, status: 'Active', lease_type: 'Fixed', rental_frequency: 'Monthly', created_at: '2023-05-20T14:20:00Z', updated_at: '2023-05-20T14:20:00Z', days_until_expiry: 180, is_expired: false, is_expiring_soon: false,
-  },
-];
+// Mock data removed - using real API data
 
-// Mock properties, tenants, landlords
-const mockProperties = [
-  { id: '1', name: 'Sunset Apartment 2A', code: 'PRO000001', address: '123 Main St, Cape Town' },
-  { id: '2', name: 'Garden Villa 15', code: 'PRO000002', address: '456 Oak Ave, Stellenbosch' },
-];
-const mockTenants = [
-  { id: '1', name: 'John Smith', code: 'TEN000001', email: 'john.smith@email.com' },
-  { id: '2', name: 'Michael Chen', code: 'TEN000002', email: 'michael.chen@email.com' },
-];
-const mockLandlords = [
-  { id: '1', name: 'Sarah Johnson', code: 'LAN000001', email: 'sarah@propertyholdings.co.za' },
-  { id: '2', name: 'Emma Williams', code: 'LAN000002', email: 'emma@realestate.co.za' },
-];
+// Mock data removed - using real API data
 
 // Seeded random number generator for consistent SSR/client results
 class SeededRandom {
@@ -140,7 +146,7 @@ const getLeaseTransactions = (lease: Lease) => {
   const currentDate = new Date();
   
   // Create seeded random generator based on lease ID for consistency
-  const rng = new SeededRandom(parseInt(lease.id) * 12345);
+  const rng = new SeededRandom(lease.id * 12345);
   
   // Generate monthly rent charges and payments from start date to current
   let runningBalance = 0;
@@ -241,13 +247,14 @@ export default function LeaseDetailPage() {
   const router = useRouter();
   const params = useParams();
   const leaseId = Array.isArray(params?.id) ? params.id[0] : params?.id;
-
-  // Find the lease by id
-  const lease = mockLeases.find((l) => l.id === leaseId);
-  const property = mockProperties.find((p) => p.code === lease?.property_code);
-  const landlord = mockLandlords.find((l) => l.code === lease?.landlord_code);
-  const tenant = mockTenants.find((t) => t.code === lease?.tenant_code);
-
+  
+  // Create API instance
+  const leaseAPI = new LeaseAPI();
+  
+  const [lease, setLease] = useState<Lease | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   // Tab state
   const [activeTab, setActiveTab] = useState("Lease");
   const [activeFinancialTab, setActiveFinancialTab] = useState("Statement");
@@ -256,14 +263,14 @@ export default function LeaseDetailPage() {
   const [selectedTransactionType, setSelectedTransactionType] = useState<string | null>(null);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   
-  // Invoice form state
+  // Invoice form state - initialize with default values
   const [invoiceForm, setInvoiceForm] = useState<InvoiceFormData>({
     invoiceNumber: `INV${Date.now().toString().slice(-6)}`,
     dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    depositHeld: lease?.deposit || 0,
+    depositHeld: 0, // Will be updated when lease data is loaded
     paymentReference: `LEA${Date.now().toString().slice(-6)}`,
     emailSubject: "Enter a custom email subject (Optional)",
-    emailRecipient: tenant?.email || "tenant@example.com",
+    emailRecipient: "tenant@example.com", // Will be updated when lease data is loaded
     lineItems: [
       {
         id: '1',
@@ -283,14 +290,7 @@ export default function LeaseDetailPage() {
         id: '3',
         date: new Date().toISOString().split('T')[0],
         description: '[Payment] July payment',
-        amount: -15190.00,
-        notes: 'thank you'
-      },
-      {
-        id: '4',
-        date: new Date().toISOString().split('T')[0],
-        description: '[Rent] rent',
-        amount: 12248.00,
+        amount: -12000,
         notes: 'zm test'
       }
     ],
@@ -333,6 +333,79 @@ export default function LeaseDetailPage() {
   const [status, setStatus] = useState('draft');
   const invoiceRef = useRef<HTMLDivElement>(null);
 
+  // Fetch real lease data
+  useEffect(() => {
+    const fetchLease = async () => {
+      try {
+        setLoading(true);
+        const leaseData = await leaseAPI.getLease(parseInt(leaseId));
+        setLease(leaseData);
+        console.log('Fetched lease data:', leaseData);
+      } catch (err) {
+        console.error('Error fetching lease:', err);
+        setError('Failed to load lease data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (leaseId) {
+      fetchLease();
+    }
+  }, [leaseId]);
+
+  // Update invoice form when lease data is loaded
+  useEffect(() => {
+    if (lease && lease.tenant) {
+      setInvoiceForm(prev => ({
+        ...prev,
+        depositHeld: lease.deposit_amount || 0,
+        emailRecipient: lease.tenant.email || "tenant@example.com"
+      }));
+    }
+  }, [lease]);
+
+  // Use real data from lease object
+  const property = lease?.property;
+  const landlord = lease?.landlord;
+  const tenant = lease?.tenant;
+  
+  // Debug logging
+  console.log('Lease ID from params:', leaseId);
+  console.log('Parsed lease ID:', parseInt(leaseId || '1'));
+  console.log('Found lease:', lease);
+
+  // Show loading state
+  if (loading) {
+    return (
+      <DashboardLayout title="Lease Details">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  // Show error state
+  if (error && !lease) {
+    return (
+      <DashboardLayout title="Lease Details">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-red-600 mb-4">Error Loading Lease</h2>
+            <p className="text-gray-600">{error}</p>
+            <button 
+              onClick={() => router.back()}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   // Handle tab switching
   const handleTabClick = (tab: string) => setActiveTab(tab);
   const handleFinancialTabClick = (tab: string) => setActiveFinancialTab(tab);
@@ -367,6 +440,15 @@ export default function LeaseDetailPage() {
   const handleEdit = () => toast.success("Edit lease - feature coming soon");
   const handleExtend = () => toast.success("Extend lease - feature coming soon");
   const handleCancel = () => toast.success("Cancel lease - feature coming soon");
+  
+  // Navigation handlers
+  const handleViewTenantProfile = () => {
+    if (lease?.tenant?.id) {
+      router.push(`/dashboard/tenants/${lease.tenant.id}?fromLease=${lease.id}`);
+    } else {
+      toast.error("Tenant information not available");
+    }
+  };
 
   // Invoice form handlers
   const handleInvoiceInputChange = (field: keyof InvoiceFormData, value: any) => {
@@ -477,7 +559,7 @@ export default function LeaseDetailPage() {
       yPos += 8;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text(tenant ? tenant.name : lease.tenant_name, 20, yPos);
+      doc.text(tenant ? tenant.name : 'Unknown Tenant', 20, yPos);
       
              // Tenant address (using sample address format)
        yPos += 6;
@@ -503,7 +585,7 @@ export default function LeaseDetailPage() {
        yPos += 15;
        doc.setFont('helvetica', 'normal');
        doc.setFontSize(10);
-       const propertyText = `Property: ${property ? property.name + ' - ' + lease.property_name : lease.property_name}`;
+       const propertyText = `Property: ${property ? property.name : 'Unknown Property'}`;
        doc.text(propertyText, 20, yPos);
       
       // Financial summary boxes
@@ -514,7 +596,7 @@ export default function LeaseDetailPage() {
       doc.rect(20, yPos, 95, 12, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
-      doc.text('DEPOSIT HELD: ' + formatCurrency(lease.deposit), 25, yPos + 8);
+      doc.text('DEPOSIT HELD: ' + formatCurrency(lease.deposit_amount), 25, yPos + 8);
       
       // Amount due box (golden background)
       doc.rect(115, yPos, 95, 12, 'F');
@@ -714,7 +796,7 @@ export default function LeaseDetailPage() {
           },
         ]);
         setFromDetails('Your Company Name\nYour Address\nCity, State ZIP\nPhone: (123) 456-7890\nEmail: info@company.com');
-        setToDetails(`${tenant?.name || lease.tenant_name}\n${property?.address || 'Property Address'}`);
+        setToDetails(`${tenant?.name || 'Unknown Tenant'}\n${property?.address || 'Property Address'}`);
         setBankInfo('Bank: First National Bank\nAccount Name: Property Management\nAccount Number: 12345678901\nBranch Code: 250655');
         setNotes('Payment due within 30 days.');
       } else {
@@ -731,7 +813,7 @@ export default function LeaseDetailPage() {
           }
         ]);
         setFromDetails('Your Company Name\nYour Address\nCity, State ZIP\nPhone: (123) 456-7890\nEmail: info@company.com');
-        setToDetails(`${tenant?.name || lease.tenant_name}\n${property?.address || 'Property Address'}`);
+        setToDetails(`${tenant?.name || 'Unknown Tenant'}\n${property?.address || 'Property Address'}`);
         setBankInfo('');
         setNotes('');
       }
@@ -772,10 +854,10 @@ export default function LeaseDetailPage() {
       const paymentNotificationEmail = localStorage.getItem('paymentNotificationEmail');
       
       const requestBody: any = {
-        tenant_id: lease.tenant_code,
+        tenant_id: tenant?.tenant_code || 'UNKNOWN',
         amount: total.toFixed(2),
         invoice_month: new Date(issueDate).toISOString().slice(0, 7), // Format: YYYY-MM
-        description: `${title} - ${tenant?.name || lease.tenant_name}`
+        description: `${title} - ${tenant?.name || 'Unknown Tenant'}`
       };
       
       // Include Strike settings if configured
@@ -803,7 +885,7 @@ export default function LeaseDetailPage() {
       }
 
       const invoice = await response.json();
-      const paymentUrl = `${window.location.origin}/pay/${lease.tenant_code}/invoice/${invoice.id}`;
+      const paymentUrl = `${window.location.origin}/pay/${tenant?.tenant_code || 'unknown'}/invoice/${invoice.id}`;
       
       toast.success('Bitcoin payment invoice created! Payment link ready.');
       return paymentUrl;
@@ -912,7 +994,7 @@ export default function LeaseDetailPage() {
       doc.text('To', 70, yPos + 5);
       doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      doc.text(tenant?.name || lease.tenant_name, 70, yPos + 12);
+      doc.text(tenant?.name || 'Unknown Tenant', 70, yPos + 12);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.text('Phone: 07790 046362', 70, yPos + 18);
@@ -1089,7 +1171,7 @@ export default function LeaseDetailPage() {
 
   // --- Main Render ---
   return (
-    <DashboardLayout title={`Lease - ${tenant ? tenant.name : lease.tenant_name}`}>
+          <DashboardLayout title={`Lease - ${tenant ? tenant.name : 'Unknown Tenant'}`}>
       {/* Back to Leases button */}
       <div className="mb-6">
         <button
@@ -1108,6 +1190,7 @@ export default function LeaseDetailPage() {
           { label: "Financials", icon: BanknotesIcon },
           { label: "Contacts", icon: UserGroupIcon },
           { label: "Notes", icon: ClipboardDocumentListIcon },
+          { label: "Attachments", icon: DocumentTextIcon },
         ].map((tab) => (
           <button
             key={tab.label}
@@ -1240,6 +1323,19 @@ export default function LeaseDetailPage() {
                   <div className="text-xs text-muted-foreground/70 mb-1">Rent Due Date</div>
                   <div className="text-white font-medium">1st of each month</div>
                 </div>
+                <div>
+                  <div className="text-xs text-muted-foreground/70 mb-1">Late Fee</div>
+                  <div className="text-white font-medium">
+                    {lease.late_fee_type === 'percentage' 
+                      ? `${lease.late_fee_percentage}% of rent`
+                      : `${formatCurrency(lease.late_fee_amount)} fixed amount`
+                    }
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground/70 mb-1">Grace Period</div>
+                  <div className="text-white font-medium">{lease.grace_period_days} days</div>
+                </div>
               </div>
             </div>
 
@@ -1260,18 +1356,18 @@ export default function LeaseDetailPage() {
                 <div>
                   <div className="text-xs text-muted-foreground/70 mb-1">Property</div>
                   <div className="text-primary font-semibold cursor-pointer underline hover:text-secondary" onClick={() => router.push(`/dashboard/properties`)}>
-                    {property ? property.name : lease.property_name}
+                    {property ? property.name : 'Unknown Property'}
                   </div>
-                  <div className="text-xs text-muted-foreground/70 mt-1">{lease.property_code}</div>
+                                      <div className="text-xs text-muted-foreground/70 mt-1">{property ? property.property_code : 'N/A'}</div>
                 </div>
                 <div className="md:col-span-2">
                   <div className="text-xs text-muted-foreground/70 mb-1">Tenant(s)</div>
                   <div className="flex flex-wrap gap-2">
                     <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm cursor-pointer hover:bg-blue-200" onClick={() => router.push(`/dashboard/tenants`)}>
-                      {tenant ? tenant.name : lease.tenant_name}
+                      {tenant ? tenant.name : 'Unknown Tenant'}
                     </span>
                   </div>
-                  <div className="text-xs text-muted-foreground/70 mt-1">{lease.tenant_code}</div>
+                                      <div className="text-xs text-muted-foreground/70 mt-1">{tenant ? tenant.tenant_code : 'N/A'}</div>
                 </div>
               </div>
             </div>
@@ -1803,7 +1899,7 @@ export default function LeaseDetailPage() {
                       <div style={{ flex: 1, paddingLeft: '20px' }}>
                         <div style={{ fontSize: '10px', color: '#888', marginBottom: '5px' }}>To</div>
                         <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px' }}>
-                          {tenant?.name || lease.tenant_name}
+                          {tenant?.name || 'Unknown Tenant'}
                         </div>
                         <div style={{ fontSize: '9px', color: '#888', lineHeight: '1.3' }}>
                           <div>Phone: 07790 046362</div>
@@ -2007,11 +2103,11 @@ export default function LeaseDetailPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-muted-foreground/70 mb-1">Name</p>
-                    <p className="text-white font-medium">{tenant ? tenant.name : lease.tenant_name}</p>
+                    <p className="text-white font-medium">{tenant ? tenant.name : 'Unknown Tenant'}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground/70 mb-1">Code</p>
-                    <p className="text-primary">{lease.tenant_code}</p>
+                    <p className="text-primary">{tenant ? tenant.tenant_code : 'N/A'}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground/70 mb-1">Email</p>
@@ -2023,11 +2119,10 @@ export default function LeaseDetailPage() {
                   </div>
                 </div>
                 <div className="mt-4 flex space-x-2">
-                  <button className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20">
-                    <EnvelopeIcon className="h-4 w-4 mr-2" />
-                    Send Email
-                  </button>
-                  <button className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20">
+                  <button 
+                    onClick={handleViewTenantProfile}
+                    className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
+                  >
                     <UserIcon className="h-4 w-4 mr-2" />
                     View Profile
                   </button>
@@ -2064,10 +2159,6 @@ export default function LeaseDetailPage() {
                 </div>
                 <div className="mt-4 flex space-x-2">
                   <button className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20">
-                    <EnvelopeIcon className="h-4 w-4 mr-2" />
-                    Send Email
-                  </button>
-                  <button className="inline-flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20">
                     <BuildingOfficeIcon className="h-4 w-4 mr-2" />
                     View Profile
                   </button>
@@ -2087,7 +2178,7 @@ export default function LeaseDetailPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-muted-foreground/70 mb-1">Property Name</p>
-                    <p className="text-white font-medium">{property ? property.name : lease.property_name}</p>
+                    <p className="text-white font-medium">{property ? property.name : 'Unknown Property'}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground/70 mb-1">Code</p>
@@ -2113,107 +2204,11 @@ export default function LeaseDetailPage() {
           </div>
         )}
         {activeTab === "Notes" && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">Lease Notes</h3>
-              <button 
-                onClick={() => {
-                  // Add new note functionality
-                  toast.success("Add note functionality coming soon");
-                }}
-                className="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium"
-              >
-                <PlusIcon className="h-4 w-4 mr-2" />
-                Add Note
-              </button>
-            </div>
-
-            {/* Notes List */}
-            <div className="space-y-4">
-              {[
-                {
-                  id: '1',
-                  title: 'Lease Renewal Discussion',
-                  content: 'Tenant expressed interest in renewing the lease for another year. Discussed potential rent increase of 5% to align with market rates.',
-                  author: 'Property Manager',
-                  date: '2024-03-15',
-                  type: 'important'
-                },
-                {
-                  id: '2',
-                  title: 'Maintenance Request',
-                  content: 'Tenant reported minor plumbing issue in the kitchen. Scheduled maintenance for next week.',
-                  author: 'John Smith',
-                  date: '2024-03-10',
-                  type: 'maintenance'
-                },
-                {
-                  id: '3',
-                  title: 'Payment Reminder',
-                  content: 'Sent payment reminder for March rent. Tenant confirmed payment will be made by end of week.',
-                  author: 'Property Manager',
-                  date: '2024-03-01',
-                  type: 'payment'
-                },
-                {
-                  id: '4',
-                  title: 'Property Inspection',
-                  content: 'Conducted quarterly property inspection. Property is well-maintained. No issues found.',
-                  author: 'Property Manager',
-                  date: '2024-02-28',
-                  type: 'inspection'
-                }
-              ].map((note) => (
-                <div key={note.id} className="bg-white/5 border border-white/20 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-3 h-3 rounded-full ${
-                        note.type === 'important' ? 'bg-red-400' :
-                        note.type === 'maintenance' ? 'bg-yellow-400' :
-                        note.type === 'payment' ? 'bg-green-400' :
-                        'bg-blue-400'
-                      }`}></div>
-                      <h4 className="text-md font-medium text-white">{note.title}</h4>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button className="text-muted-foreground/70 hover:text-white p-1">
-                        <PencilIcon className="h-4 w-4" />
-                      </button>
-                      <button className="text-muted-foreground/70 hover:text-red-400 p-1">
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-muted-foreground text-sm mb-3">{note.content}</p>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground/70">
-                    <span>By {note.author}</span>
-                    <span>{note.date}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Quick Note Input */}
-            <div className="bg-white/5 border border-white/20 rounded-lg p-4">
-              <h4 className="text-md font-medium text-white mb-3">Quick Note</h4>
-              <textarea
-                placeholder="Add a quick note about this lease..."
-                className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                rows={3}
-              />
-              <div className="flex items-center justify-between mt-3">
-                <div className="flex items-center space-x-4">
-                  <label className="flex items-center space-x-2 text-sm text-muted-foreground">
-                    <input type="checkbox" className="rounded border-white/20 bg-white/10 text-blue-500 focus:ring-blue-500" />
-                    <span>Mark as important</span>
-                  </label>
-                </div>
-                <button className="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium">
-                  Save Note
-                </button>
-              </div>
-            </div>
-          </div>
+          <LeaseNotes leaseId={parseInt(leaseId || '1')} />
+        )}
+        
+        {activeTab === "Attachments" && (
+          <LeaseAttachments leaseId={parseInt(leaseId || '1')} />
         )}
       </div>
     </DashboardLayout>

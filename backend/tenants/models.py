@@ -168,24 +168,4 @@ class TenantCommunication(models.Model):
         return f"{self.tenant.tenant_code} - {self.subject}"
 
 
-class Lease(models.Model):
-    """Model representing a lease agreement between tenant and property."""
-    property = models.ForeignKey('properties.Property', on_delete=models.CASCADE, related_name='leases')
-    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='leases')
-    start_date = models.DateField()
-    end_date = models.DateField()
-    monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
-    deposit_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    status = models.CharField(
-        max_length=20,
-        choices=[('active', 'Active'), ('expired', 'Expired'), ('terminated', 'Terminated'), ('pending', 'Pending')]
-    )
-    terms = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        ordering = ['-start_date']
-
-    def __str__(self):
-        return f"Lease for {self.tenant} at {self.property}"

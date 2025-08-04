@@ -66,8 +66,13 @@ class PropertyListView(generics.ListAPIView):
                 Q(owner=user) | Q(property_manager=user)
             )
         
-        # Select related to optimize queries
-        queryset = queryset.select_related('owner', 'property_manager')
+        # Select related to optimize queries and prefetch related data
+        queryset = queryset.select_related('owner', 'property_manager', 'parent_property').prefetch_related(
+            'property_images',
+            'property_documents',
+            'leases__tenant__user',
+            'sub_properties'
+        )
         
         # Apply custom filtering
         return self.apply_custom_filters(queryset)
@@ -136,6 +141,19 @@ class PropertyListView(generics.ListAPIView):
         if max_size:
             queryset = queryset.filter(square_meters__lte=float(max_size))
         
+        # Exclude sub-properties filter (only when not searching)
+        exclude_sub_properties = self.request.query_params.get('exclude_sub_properties')
+        search_query = self.request.query_params.get('search', '').strip()
+        
+        # Only exclude sub-properties if explicitly requested AND no search is being performed
+        if exclude_sub_properties and exclude_sub_properties.lower() == 'true' and not search_query:
+            queryset = queryset.filter(parent_property__isnull=True)
+        
+        # Parent property filter (for getting sub-properties)
+        parent_property = self.request.query_params.get('parent_property')
+        if parent_property:
+            queryset = queryset.filter(parent_property=parent_property)
+        
         return queryset
     
     def list(self, request, *args, **kwargs):
@@ -174,11 +192,19 @@ class PropertyDetailView(generics.RetrieveUpdateDestroyAPIView):
         user = self.request.user
         
         if user.is_staff:
-            return Property.objects.all()
+            queryset = Property.objects.all()
         else:
-            return Property.objects.filter(
+            queryset = Property.objects.filter(
                 Q(owner=user) | Q(property_manager=user)
             )
+        
+        # Optimize queries with select_related and prefetch_related
+        return queryset.select_related('owner', 'property_manager', 'parent_property').prefetch_related(
+            'property_images',
+            'property_documents',
+            'leases__tenant__user',
+            'sub_properties'
+        )
     
     def get_serializer_class(self):
         """Use different serializer for update operations"""

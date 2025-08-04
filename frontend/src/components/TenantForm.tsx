@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { tenantAPI } from '@/lib/api';
+import { tenantApi } from '@/lib/api';
 
 // Form validation schema
 const tenantFormSchema = z.object({
@@ -82,7 +82,7 @@ export default function TenantForm({ initialData, onSubmit, isLoading = false }:
         setUploadProgress(prev => ({ ...prev, [progressId]: 0 }));
         
         // Upload document
-        await tenantAPI.documents.upload(initialData?.id_number || '', formData);
+        await tenantApi.documents.upload(initialData?.id_number || '', formData);
         
         // Update progress
         setUploadProgress(prev => ({ ...prev, [progressId]: 100 }));

@@ -14,7 +14,8 @@ django.setup()
 
 from django.contrib.auth import get_user_model
 from finance.models import Invoice, InvoiceLineItem, InvoiceAuditLog
-from tenants.models import Tenant, Lease
+from tenants.models import Tenant
+from leases.models import Lease
 from properties.models import Property
 from users.models import CustomUser
 from django.utils import timezone

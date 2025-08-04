@@ -15,7 +15,8 @@ from .serializers import (
     InvoiceTemplateSerializer, InvoicePaymentSerializer, InvoiceSummarySerializer,
     InvoiceDetailSerializer, InvoiceLineItemSerializer, InvoiceAuditLogSerializer
 )
-from tenants.models import Lease, Tenant
+from tenants.models import Tenant
+from leases.models import Lease
 from properties.models import Property
 from users.models import CustomUser
 

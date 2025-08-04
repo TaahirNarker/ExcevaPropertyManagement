@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   DocumentTextIcon,
@@ -15,10 +15,14 @@ import {
   BanknotesIcon,
   ArrowLeftIcon,
   PlusIcon,
-  MinusIcon
+  MinusIcon,
+  MagnifyingGlassIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
+import { propertyAPI, landlordApi, tenantApi } from '@/lib/api';
+import { LeaseAPI } from '@/lib/lease-api';
 import toast from 'react-hot-toast';
 
 // Form data interface
@@ -33,7 +37,9 @@ interface LeaseFormData {
   deposit: string;
   rental_frequency: string;
   rent_due_day: string;
+  late_fee_type: 'percentage' | 'amount';
   late_fee_percentage: string;
+  late_fee_amount: string;
   grace_period_days: string;
   lease_duration_months: string;
   auto_renew: boolean;
@@ -50,27 +56,40 @@ interface FormErrors {
   [key: string]: string;
 }
 
-// Mock data for dropdowns
-const mockProperties = [
-  { id: '1', name: 'Sunset Apartment 2A', code: 'PRO000001', address: '123 Main St, Cape Town' },
-  { id: '2', name: 'Garden Villa 15', code: 'PRO000002', address: '456 Oak Ave, Stellenbosch' },
-  { id: '3', name: 'City Loft 8B', code: 'PRO000003', address: '789 High St, Durban' },
-  { id: '4', name: 'Beachfront Condo 12', code: 'PRO000004', address: '321 Beach Rd, Port Elizabeth' },
-];
+// Interfaces for real data
+interface Property {
+  id: string;
+  property_code: string;
+  name: string;
+  display_name: string;
+  full_address: string;
+  status: string;
+  status_display: string;
+  is_active: boolean;
+}
 
-const mockTenants = [
-  { id: '1', name: 'John Smith', code: 'TEN000001', email: 'john.smith@email.com' },
-  { id: '2', name: 'Michael Chen', code: 'TEN000002', email: 'michael.chen@email.com' },
-  { id: '3', name: 'Lisa Anderson', code: 'TEN000003', email: 'lisa.anderson@email.com' },
-  { id: '4', name: 'Robert Wilson', code: 'TEN000004', email: 'robert.wilson@email.com' },
-];
+interface Tenant {
+  id: string;
+  tenant_code: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  status: string;
+  property_name?: string;
+  created_at: string;
+}
 
-const mockLandlords = [
-  { id: '1', name: 'Sarah Johnson', code: 'LAN000001', email: 'sarah@propertyholdings.co.za' },
-  { id: '2', name: 'Emma Williams', code: 'LAN000002', email: 'emma@realestate.co.za' },
-  { id: '3', name: 'David Thompson', code: 'LAN000003', email: 'david.t@investments.com' },
-  { id: '4', name: 'Michael Brown', code: 'LAN000004', email: 'michael.brown@email.com' },
-];
+interface Landlord {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  type?: string;
+  company_name?: string;
+  status?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 const LEASE_TYPES = [
   { value: 'Fixed', label: 'Fixed Term' },
@@ -90,6 +109,7 @@ const RENTAL_FREQUENCIES = [
 export default function AddLeasePage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
+  const leaseAPI = new LeaseAPI();
   
   // Form state
   const [formData, setFormData] = useState<LeaseFormData>({
@@ -103,7 +123,9 @@ export default function AddLeasePage() {
     deposit: '',
     rental_frequency: 'Monthly',
     rent_due_day: '1',
+    late_fee_type: 'percentage',
     late_fee_percentage: '10',
+    late_fee_amount: '',
     grace_period_days: '5',
     lease_duration_months: '12',
     auto_renew: false,
@@ -119,6 +141,87 @@ export default function AddLeasePage() {
   const [loading, setLoading] = useState(false);
   const [showQuickAddModal, setShowQuickAddModal] = useState(false);
   const [quickAddType, setQuickAddType] = useState<'property' | 'tenant' | 'landlord' | null>(null);
+  
+  // Real data state
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [landlords, setLandlords] = useState<Landlord[]>([]);
+  const [propertiesWithActiveLeases, setPropertiesWithActiveLeases] = useState<Set<string>>(new Set());
+  const [loadingData, setLoadingData] = useState(false);
+  
+  // Autocomplete state
+  const [propertySearch, setPropertySearch] = useState('');
+  const [tenantSearch, setTenantSearch] = useState('');
+  const [landlordSearch, setLandlordSearch] = useState('');
+  const [showPropertyDropdown, setShowPropertyDropdown] = useState(false);
+  const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+  const [showLandlordDropdown, setShowLandlordDropdown] = useState(false);
+
+  // Fetch real data for dropdowns
+  const fetchData = async () => {
+    try {
+      setLoadingData(true);
+      
+      // Fetch properties
+      const propertiesData = await propertyAPI.list({ page_size: 100 });
+      setProperties(propertiesData.results || propertiesData);
+      
+      // Fetch tenants using the list method
+              const tenantsData = await tenantApi.list({ page_size: 100 });
+      setTenants(tenantsData.results || tenantsData || []);
+      
+      // Fetch landlords
+      const landlordsData = await landlordApi.getLandlords();
+      setLandlords(landlordsData);
+      
+      // Fetch all leases to identify properties with active leases
+      try {
+        const allLeases = await leaseAPI.getLeases({ page_size: 1000 });
+        const activeLeasePropertyIds = new Set<string>();
+        
+        allLeases.results.forEach(lease => {
+          if (lease.status === 'active' || lease.status === 'pending') {
+            activeLeasePropertyIds.add(lease.property.id);
+          }
+        });
+        
+        setPropertiesWithActiveLeases(activeLeasePropertyIds);
+      } catch (leaseError) {
+        console.error('Error fetching leases for property filtering:', leaseError);
+        // Don't show error to user, just log it
+      }
+      
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      toast.error('Failed to load some data. Please refresh the page.');
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  // Load data on component mount
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [isAuthenticated]);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.autocomplete-container')) {
+        setShowPropertyDropdown(false);
+        setShowTenantDropdown(false);
+        setShowLandlordDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Restore form data when returning from creating a new entity
   useEffect(() => {
@@ -135,11 +238,52 @@ export default function AddLeasePage() {
         sessionStorage.removeItem('leaseFormData');
         
         toast.success('Form data restored. You can now select the newly created entity.');
+        
+        // Refresh data to include newly created entities
+        fetchData();
       } catch (error) {
         console.error('Error restoring form data:', error);
       }
     }
   }, []);
+
+  // Filter functions for autocomplete
+  const filteredProperties = properties.filter(property =>
+    // Filter by search term
+    (property.name.toLowerCase().includes(propertySearch.toLowerCase()) ||
+     property.property_code.toLowerCase().includes(propertySearch.toLowerCase())) &&
+    // Exclude properties with active leases
+    !propertiesWithActiveLeases.has(property.id)
+  );
+
+  const filteredTenants = tenants.filter(tenant =>
+    tenant.full_name.toLowerCase().includes(tenantSearch.toLowerCase()) ||
+    tenant.email.toLowerCase().includes(tenantSearch.toLowerCase())
+  );
+
+  const filteredLandlords = landlords.filter(landlord =>
+    landlord.name.toLowerCase().includes(landlordSearch.toLowerCase()) ||
+    landlord.email.toLowerCase().includes(landlordSearch.toLowerCase())
+  );
+
+  // Selection handlers
+  const handlePropertySelect = (property: Property) => {
+    setFormData(prev => ({ ...prev, property_id: property.id }));
+    setPropertySearch(property.name);
+    setShowPropertyDropdown(false);
+  };
+
+  const handleTenantSelect = (tenant: Tenant) => {
+    setFormData(prev => ({ ...prev, tenant_id: tenant.id }));
+    setTenantSearch(tenant.full_name);
+    setShowTenantDropdown(false);
+  };
+
+  const handleLandlordSelect = (landlord: Landlord) => {
+    setFormData(prev => ({ ...prev, landlord_id: landlord.id }));
+    setLandlordSearch(landlord.name);
+    setShowLandlordDropdown(false);
+  };
 
   // Handle input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -258,9 +402,15 @@ export default function AddLeasePage() {
       newErrors.deposit = 'Deposit cannot be negative';
     }
 
-    // Percentage validation
-    if (formData.late_fee_percentage && (parseFloat(formData.late_fee_percentage) < 0 || parseFloat(formData.late_fee_percentage) > 100)) {
-      newErrors.late_fee_percentage = 'Late fee percentage must be between 0 and 100';
+    // Late fee validation
+    if (formData.late_fee_type === 'percentage') {
+      if (formData.late_fee_percentage && (parseFloat(formData.late_fee_percentage) < 0 || parseFloat(formData.late_fee_percentage) > 100)) {
+        newErrors.late_fee_percentage = 'Late fee percentage must be between 0 and 100';
+      }
+    } else if (formData.late_fee_type === 'amount') {
+      if (formData.late_fee_amount && parseFloat(formData.late_fee_amount) < 0) {
+        newErrors.late_fee_amount = 'Late fee amount cannot be negative';
+      }
     }
 
     setErrors(newErrors);
@@ -279,19 +429,65 @@ export default function AddLeasePage() {
     setLoading(true);
 
     try {
-      // Mock API call - replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Prepare lease data for API with proper value handling
+      const leaseData = {
+        property: formData.property_id,
+        tenant: formData.tenant_id,
+        landlord: formData.landlord_id || null,
+        lease_type: formData.lease_type || 'Fixed',
+        start_date: formData.start_date,
+        end_date: formData.end_date,
+        monthly_rent: parseFloat(formData.monthly_rent),
+        deposit_amount: parseFloat(formData.deposit),
+        rental_frequency: formData.rental_frequency || 'Monthly',
+        rent_due_day: formData.rent_due_day ? parseInt(formData.rent_due_day) : 1,
+        late_fee_percentage: formData.late_fee_type === 'percentage' ? (formData.late_fee_percentage ? parseFloat(formData.late_fee_percentage) : 0.00) : 0.00,
+        late_fee_amount: formData.late_fee_type === 'amount' ? (formData.late_fee_amount ? parseFloat(formData.late_fee_amount) : 0.00) : 0.00,
+        grace_period_days: formData.grace_period_days ? parseInt(formData.grace_period_days) : 0,
+        lease_duration_months: formData.lease_duration_months ? parseInt(formData.lease_duration_months) : null,
+        auto_renew: formData.auto_renew || false,
+        notice_period_days: formData.notice_period_days ? parseInt(formData.notice_period_days) : 30,
+        pro_rata_amount: formData.pro_rata_amount ? parseFloat(formData.pro_rata_amount) : 0.00,
+        invoice_date: formData.invoice_date || null,
+        management_fee: formData.management_fee ? parseFloat(formData.management_fee) : 0.00,
+        procurement_fee: formData.procurement_fee ? parseFloat(formData.procurement_fee) : 0.00,
+        terms: formData.notes || '',
+        notes: formData.notes || '',
+        status: 'active'
+      };
+
+      console.log('Creating lease with data:', leaseData);
       
-      // Generate mock lease code
-      const leaseCode = `LSE${(Math.floor(Math.random() * 999999) + 1).toString().padStart(6, '0')}`;
+      // Call the real API
+      const createdLease = await leaseAPI.createLease(leaseData);
       
-      toast.success(`Lease ${leaseCode} created successfully!`);
+      console.log('Lease created successfully:', createdLease);
+      toast.success(`Lease created successfully!`);
       
       // Navigate back to leases list
       router.push('/dashboard/leases');
     } catch (error) {
       console.error('Error creating lease:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create lease');
+      
+      // Log more details about the error
+      if (error instanceof Error) {
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+      
+      // Try to get more details from the error response
+      if (error && typeof error === 'object' && 'response' in error) {
+        try {
+          const errorResponse = await (error as any).response?.json();
+          console.error('Error response details:', errorResponse);
+          toast.error(errorResponse?.detail || errorResponse?.message || error.message || 'Failed to create lease');
+        } catch (parseError) {
+          console.error('Could not parse error response:', parseError);
+          toast.error(error instanceof Error ? error.message : 'Failed to create lease');
+        }
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Failed to create lease');
+      }
     } finally {
       setLoading(false);
     }
@@ -346,14 +542,14 @@ export default function AddLeasePage() {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" style={{ position: 'relative', zIndex: 1 }}>
           {/* Property, Tenant, Landlord Selection */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
+          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6" style={{ position: 'relative', zIndex: 10 }}>
             <h3 className="text-lg font-medium text-white mb-4">Lease Parties</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6" style={{ position: 'relative', zIndex: 20 }}>
               {/* Property */}
-              <div>
+              <div style={{ position: 'relative', zIndex: 30 }}>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-white">
                     Property *
@@ -367,26 +563,64 @@ export default function AddLeasePage() {
                     Add Property
                   </button>
                 </div>
-                <select
-                  name="property_id"
-                  value={formData.property_id}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.property_id ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Select Property</option>
-                  {mockProperties.map(property => (
-                    <option key={property.id} value={property.id}>
-                      {property.name} ({property.code})
-                    </option>
-                  ))}
-                </select>
+                <div className="relative autocomplete-container" style={{ position: 'relative', zIndex: 1000 }}>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={propertySearch}
+                      onChange={(e) => {
+                        setPropertySearch(e.target.value);
+                        setShowPropertyDropdown(true);
+                      }}
+                      onFocus={() => setShowPropertyDropdown(true)}
+                      placeholder={loadingData ? 'Loading properties...' : 'Search properties...'}
+                      disabled={loadingData}
+                      className={`w-full px-3 py-2 pr-10 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        errors.property_id ? 'border-red-500' : 'border-white/20'
+                      } disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 backdrop-blur-sm text-white placeholder-gray-300`}
+                    />
+                    <MagnifyingGlassIcon className="absolute right-3 top-2.5 h-5 w-5 text-gray-300" />
+                  </div>
+                  
+                  {showPropertyDropdown && filteredProperties.length > 0 && (
+                    <div className="autocomplete-dropdown w-full mt-1 bg-gray-800/95 backdrop-blur-lg border border-white/20 rounded-md shadow-xl max-h-60 overflow-auto">
+                      {filteredProperties.map(property => (
+                        <div
+                          key={property.id}
+                          onClick={() => handlePropertySelect(property)}
+                          className="px-4 py-2 hover:bg-white/10 cursor-pointer border-b border-white/10 last:border-b-0 transition-colors"
+                        >
+                          <div className="font-medium text-white">{property.name}</div>
+                          <div className="text-sm text-gray-300">{property.property_code}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {showPropertyDropdown && filteredProperties.length === 0 && !propertySearch && properties.length > 0 && propertiesWithActiveLeases.size > 0 && (
+                    <div className="autocomplete-dropdown w-full mt-1 bg-gray-800/95 backdrop-blur-lg border border-white/20 rounded-md shadow-xl">
+                      <div className="px-4 py-2 text-gray-300">
+                        All properties currently have active leases. Please terminate existing leases before creating new ones.
+                      </div>
+                    </div>
+                  )}
+                  
+                  {showPropertyDropdown && filteredProperties.length === 0 && propertySearch && (
+                    <div className="autocomplete-dropdown w-full mt-1 bg-gray-800/95 backdrop-blur-lg border border-white/20 rounded-md shadow-xl">
+                      <div className="px-4 py-2 text-gray-300">
+                        {propertiesWithActiveLeases.size > 0 && properties.length > 0 
+                          ? 'All available properties already have active leases. Please terminate existing leases first.'
+                          : 'No properties found'
+                        }
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {errors.property_id && <p className="mt-1 text-sm text-red-400">{errors.property_id}</p>}
               </div>
 
               {/* Tenant */}
-              <div>
+              <div style={{ position: 'relative', zIndex: 30 }}>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-white">
                     Tenant *
@@ -400,26 +634,51 @@ export default function AddLeasePage() {
                     Add Tenant
                   </button>
                 </div>
-                <select
-                  name="tenant_id"
-                  value={formData.tenant_id}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.tenant_id ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Select Tenant</option>
-                  {mockTenants.map(tenant => (
-                    <option key={tenant.id} value={tenant.id}>
-                      {tenant.name} ({tenant.code})
-                    </option>
-                  ))}
-                </select>
+                <div className="relative autocomplete-container" style={{ position: 'relative', zIndex: 1000 }}>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={tenantSearch}
+                      onChange={(e) => {
+                        setTenantSearch(e.target.value);
+                        setShowTenantDropdown(true);
+                      }}
+                      onFocus={() => setShowTenantDropdown(true)}
+                      placeholder={loadingData ? 'Loading tenants...' : 'Search tenants...'}
+                      disabled={loadingData}
+                      className={`w-full px-3 py-2 pr-10 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        errors.tenant_id ? 'border-red-500' : 'border-white/20'
+                      } disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 backdrop-blur-sm text-white placeholder-gray-300`}
+                    />
+                    <MagnifyingGlassIcon className="absolute right-3 top-2.5 h-5 w-5 text-gray-300" />
+                  </div>
+                  
+                  {showTenantDropdown && filteredTenants.length > 0 && (
+                    <div className="autocomplete-dropdown w-full mt-1 bg-gray-800/95 backdrop-blur-lg border border-white/20 rounded-md shadow-xl max-h-60 overflow-auto">
+                      {filteredTenants.map(tenant => (
+                        <div
+                          key={tenant.id}
+                          onClick={() => handleTenantSelect(tenant)}
+                          className="px-4 py-2 hover:bg-white/10 cursor-pointer border-b border-white/10 last:border-b-0 transition-colors"
+                        >
+                          <div className="font-medium text-white">{tenant.full_name}</div>
+                          <div className="text-sm text-gray-300">{tenant.email}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {showTenantDropdown && filteredTenants.length === 0 && tenantSearch && (
+                    <div className="autocomplete-dropdown w-full mt-1 bg-gray-800/95 backdrop-blur-lg border border-white/20 rounded-md shadow-xl">
+                      <div className="px-4 py-2 text-gray-300">No tenants found</div>
+                    </div>
+                  )}
+                </div>
                 {errors.tenant_id && <p className="mt-1 text-sm text-red-400">{errors.tenant_id}</p>}
               </div>
 
               {/* Landlord */}
-              <div>
+              <div style={{ position: 'relative', zIndex: 30 }}>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-white">
                     Landlord *
@@ -433,21 +692,46 @@ export default function AddLeasePage() {
                     Add Landlord
                   </button>
                 </div>
-                <select
-                  name="landlord_id"
-                  value={formData.landlord_id}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.landlord_id ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Select Landlord</option>
-                  {mockLandlords.map(landlord => (
-                    <option key={landlord.id} value={landlord.id}>
-                      {landlord.name} ({landlord.code})
-                    </option>
-                  ))}
-                </select>
+                <div className="relative autocomplete-container" style={{ position: 'relative', zIndex: 1000 }}>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={landlordSearch}
+                      onChange={(e) => {
+                        setLandlordSearch(e.target.value);
+                        setShowLandlordDropdown(true);
+                      }}
+                      onFocus={() => setShowLandlordDropdown(true)}
+                      placeholder={loadingData ? 'Loading landlords...' : 'Search landlords...'}
+                      disabled={loadingData}
+                      className={`w-full px-3 py-2 pr-10 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        errors.landlord_id ? 'border-red-500' : 'border-white/20'
+                      } disabled:opacity-50 disabled:cursor-not-allowed bg-white/10 backdrop-blur-sm text-white placeholder-gray-300`}
+                    />
+                    <MagnifyingGlassIcon className="absolute right-3 top-2.5 h-5 w-5 text-gray-300" />
+                  </div>
+                  
+                  {showLandlordDropdown && filteredLandlords.length > 0 && (
+                    <div className="autocomplete-dropdown w-full mt-1 bg-gray-800/95 backdrop-blur-lg border border-white/20 rounded-md shadow-xl max-h-60 overflow-auto">
+                      {filteredLandlords.map(landlord => (
+                        <div
+                          key={landlord.id}
+                          onClick={() => handleLandlordSelect(landlord)}
+                          className="px-4 py-2 hover:bg-white/10 cursor-pointer border-b border-white/10 last:border-b-0 transition-colors"
+                        >
+                          <div className="font-medium text-white">{landlord.name}</div>
+                          <div className="text-sm text-gray-300">{landlord.email}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {showLandlordDropdown && filteredLandlords.length === 0 && landlordSearch && (
+                    <div className="autocomplete-dropdown w-full mt-1 bg-gray-800/95 backdrop-blur-lg border border-white/20 rounded-md shadow-xl">
+                      <div className="px-4 py-2 text-gray-300">No landlords found</div>
+                    </div>
+                  )}
+                </div>
                 {errors.landlord_id && <p className="mt-1 text-sm text-red-400">{errors.landlord_id}</p>}
               </div>
             </div>
@@ -642,21 +926,44 @@ export default function AddLeasePage() {
               {/* Late Fee */}
               <div>
                 <label className="block text-sm font-medium text-white mb-2">
-                  Late Fee (%)
+                  Late Fee Type
+                </label>
+                <select
+                  name="late_fee_type"
+                  value={formData.late_fee_type}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+                >
+                  <option value="percentage">Percentage of Rent</option>
+                  <option value="amount">Fixed Amount (ZAR)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">
+                  {formData.late_fee_type === 'percentage' ? 'Late Fee (%)' : 'Late Fee Amount (ZAR)'}
                 </label>
                 <input
                   type="number"
-                  name="late_fee_percentage"
-                  value={formData.late_fee_percentage}
+                  name={formData.late_fee_type === 'percentage' ? 'late_fee_percentage' : 'late_fee_amount'}
+                  value={formData.late_fee_type === 'percentage' ? formData.late_fee_percentage : formData.late_fee_amount}
                   onChange={handleInputChange}
-                  step="0.1"
+                  step={formData.late_fee_type === 'percentage' ? '0.1' : '0.01'}
                   min="0"
-                  max="100"
+                  max={formData.late_fee_type === 'percentage' ? '100' : undefined}
                   className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.late_fee_percentage ? 'border-red-500' : 'border-gray-300'
+                    (formData.late_fee_type === 'percentage' && errors.late_fee_percentage) || 
+                    (formData.late_fee_type === 'amount' && errors.late_fee_amount) 
+                      ? 'border-red-500' : 'border-gray-300'
                   }`}
+                  placeholder={formData.late_fee_type === 'percentage' ? '10' : '0.00'}
                 />
-                {errors.late_fee_percentage && <p className="mt-1 text-sm text-red-400">{errors.late_fee_percentage}</p>}
+                {(formData.late_fee_type === 'percentage' && errors.late_fee_percentage) && (
+                  <p className="mt-1 text-sm text-red-400">{errors.late_fee_percentage}</p>
+                )}
+                {(formData.late_fee_type === 'amount' && errors.late_fee_amount) && (
+                  <p className="mt-1 text-sm text-red-400">{errors.late_fee_amount}</p>
+                )}
               </div>
 
               {/* Grace Period */}

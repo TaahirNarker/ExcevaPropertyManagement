@@ -17,7 +17,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import StatusBadge from '@/components/StatusBadge';
-import { tenantAPI } from '@/lib/api';
+import { tenantApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 // Tenant type definition
@@ -58,7 +58,7 @@ export default function TenantsDashboardPage() {
   const fetchTenants = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await tenantAPI.list();
+      const data = await tenantApi.list();
       
       // Handle paginated response structure
       const tenantsArray = Array.isArray(data) ? data : (data.results || data.data || []);
@@ -113,7 +113,7 @@ export default function TenantsDashboardPage() {
     }
 
     try {
-      await tenantAPI.delete(tenantCode);
+              await tenantApi.delete(tenantCode);
       toast.success('Tenant deleted successfully');
       fetchTenants(); // Refresh the list
     } catch (error) {

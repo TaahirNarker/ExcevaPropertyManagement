@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useRef, useCallback } from 'react';
 import { authService, User, LoginCredentials, RegistrationData, AuthResponse } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
@@ -39,8 +39,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
 
+  // Auto-logout functionality
+  const logoutTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const AUTO_LOGOUT_DURATION = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+
   // Check if passkeys are supported
   const isPasskeySupported = authService.isPasskeySupported();
+
+  // Auto-logout functions
+  const resetLogoutTimer = useCallback(() => {
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+    }
+    
+    if (isAuthenticated) {
+      logoutTimerRef.current = setTimeout(async () => {
+        toast.error('Session expired due to inactivity. Please log in again.');
+        // Use the logout function directly to avoid dependency issues
+        try {
+          await authService.logout();
+          setUser(null);
+          setIsAuthenticated(false);
+          router.push('/auth/login');
+        } catch (error) {
+          console.error('Auto-logout error:', error);
+        }
+      }, AUTO_LOGOUT_DURATION);
+    }
+  }, [isAuthenticated, router]);
+
+  const clearLogoutTimer = useCallback(() => {
+    if (logoutTimerRef.current) {
+      clearTimeout(logoutTimerRef.current);
+      logoutTimerRef.current = null;
+    }
+  }, []);
 
   // Initialize authentication state
   useEffect(() => {
@@ -58,6 +91,33 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     init();
   }, []);
+
+  // Auto-logout timer management
+  useEffect(() => {
+    if (isAuthenticated) {
+      resetLogoutTimer();
+      
+      // Set up activity listeners
+      const handleActivity = () => {
+        resetLogoutTimer();
+      };
+
+      // Listen for user activity
+      const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+      events.forEach(event => {
+        document.addEventListener(event, handleActivity, true);
+      });
+
+      return () => {
+        clearLogoutTimer();
+        events.forEach(event => {
+          document.removeEventListener(event, handleActivity, true);
+        });
+      };
+    } else {
+      clearLogoutTimer();
+    }
+  }, [isAuthenticated, resetLogoutTimer, clearLogoutTimer]);
 
   const initializeAuth = async () => {
     try {
@@ -123,6 +183,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(response.user);
       setIsAuthenticated(true);
       
+      // Reset auto-logout timer on successful login
+      resetLogoutTimer();
+      
       toast.success(`Welcome back, ${response.user.full_name}!`);
       router.push('/dashboard');
     } catch (error) {
@@ -143,6 +206,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(response.user);
       setIsAuthenticated(true);
       
+      // Reset auto-logout timer on successful registration
+      resetLogoutTimer();
+      
       toast.success(`Welcome, ${response.user.full_name}! Your account has been created.`);
       router.push('/dashboard');
     } catch (error) {
@@ -162,6 +228,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       setUser(response.user);
       setIsAuthenticated(true);
+      
+      // Reset auto-logout timer on successful passkey login
+      resetLogoutTimer();
       
       toast.success(`Welcome back, ${response.user.full_name}!`);
       router.push('/dashboard');
@@ -208,6 +277,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       setUser(null);
       setIsAuthenticated(false);
+      
+      // Clear auto-logout timer on logout
+      clearLogoutTimer();
       
       toast.success('Logged out successfully');
       router.push('/auth/login');

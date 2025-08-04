@@ -11,43 +11,26 @@ import {
   PlusIcon, 
   MagnifyingGlassIcon,
   AdjustmentsHorizontalIcon,
-  EyeIcon,
-  PencilIcon,
-  TrashIcon,
   BuildingOfficeIcon,
   UserIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
+import { landlordApi } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import toast from 'react-hot-toast';
 
-// Mock Landlord interface
+// Landlord interface
 interface Landlord {
   id: string;
-  landlord_code: string;
   name: string;
   email: string;
   phone?: string;
-  type: string;
+  type?: string;
   company_name?: string;
   vat_number?: string;
-  properties_count: number;
-  total_rental_income: number;
-  status: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// Mock response interface
-interface LandlordsResponse {
-  count: number;
-  next?: string;
-  previous?: string;
-  results: Landlord[];
-  filters: {
-    types: Array<{ value: string; label: string }>;
-    statuses: Array<{ value: string; label: string }>;
-  };
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // Local types for filters
@@ -58,86 +41,8 @@ interface Filters {
   is_active: string;
 }
 
-// Mock data
-const mockLandlords: Landlord[] = [
-  {
-    id: '1',
-    landlord_code: 'LAN000001',
-    name: 'John Smith',
-    email: 'john.smith@email.com',
-    phone: '+27 82 123 4567',
-    type: 'Individual',
-    company_name: '',
-    vat_number: '',
-    properties_count: 3,
-    total_rental_income: 25000,
-    status: 'Active',
-    created_at: '2024-01-15T10:30:00Z',
-    updated_at: '2024-01-15T10:30:00Z',
-  },
-  {
-    id: '2',
-    landlord_code: 'LAN000002',
-    name: 'Sarah Johnson',
-    email: 'sarah@propertyholdings.co.za',
-    phone: '+27 83 456 7890',
-    type: 'Company',
-    company_name: 'Property Holdings Ltd',
-    vat_number: '4123456789',
-    properties_count: 8,
-    total_rental_income: 120000,
-    status: 'Active',
-    created_at: '2024-02-01T14:20:00Z',
-    updated_at: '2024-02-01T14:20:00Z',
-  },
-  {
-    id: '3',
-    landlord_code: 'LAN000003',
-    name: 'Michael Chen',
-    email: 'michael.chen@gmail.com',
-    phone: '+27 84 789 0123',
-    type: 'Individual',
-    company_name: '',
-    vat_number: '',
-    properties_count: 2,
-    total_rental_income: 18000,
-    status: 'Active',
-    created_at: '2024-02-10T09:15:00Z',
-    updated_at: '2024-02-10T09:15:00Z',
-  },
-  {
-    id: '4',
-    landlord_code: 'LAN000004',
-    name: 'Emma Williams',
-    email: 'emma@realestate.co.za',
-    phone: '+27 85 234 5678',
-    type: 'Company',
-    company_name: 'Williams Real Estate',
-    vat_number: '4987654321',
-    properties_count: 12,
-    total_rental_income: 180000,
-    status: 'Active',
-    created_at: '2024-03-05T16:45:00Z',
-    updated_at: '2024-03-05T16:45:00Z',
-  },
-  {
-    id: '5',
-    landlord_code: 'LAN000005',
-    name: 'David Thompson',
-    email: 'david.t@investments.com',
-    phone: '+27 86 345 6789',
-    type: 'Individual',
-    company_name: '',
-    vat_number: '',
-    properties_count: 1,
-    total_rental_income: 8500,
-    status: 'Inactive',
-    created_at: '2024-03-15T11:30:00Z',
-    updated_at: '2024-03-15T11:30:00Z',
-  },
-];
-
-const mockFilters = {
+// Filter options
+const filterOptions = {
   types: [
     { value: 'Individual', label: 'Individual' },
     { value: 'Company', label: 'Company' },
@@ -166,22 +71,22 @@ export default function LandlordDashboardPage() {
     status: '',
     is_active: 'true',
   });
-  const [filterOptions, setFilterOptions] = useState(mockFilters);
   const [showFilters, setShowFilters] = useState(false);
 
-  // Mock fetch landlords function
+  // Fetch landlords function
   const fetchLandlords = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Filter mock data based on filters
-      let filteredLandlords = [...mockLandlords];
+      const data = await landlordApi.getLandlords();
+      
+      // Filter data based on search
+      let filteredLandlords = data;
       
       if (filters.search) {
-        filteredLandlords = filteredLandlords.filter(landlord =>
+        filteredLandlords = data.filter(landlord =>
           landlord.name.toLowerCase().includes(filters.search.toLowerCase()) ||
           landlord.email.toLowerCase().includes(filters.search.toLowerCase()) ||
-          landlord.landlord_code.toLowerCase().includes(filters.search.toLowerCase()) ||
           (landlord.company_name && landlord.company_name.toLowerCase().includes(filters.search.toLowerCase()))
         );
       }
@@ -207,10 +112,10 @@ export default function LandlordDashboardPage() {
       
       setLandlords(paginatedLandlords);
       setTotalCount(filteredLandlords.length);
-      setFilterOptions(mockFilters);
     } catch (error) {
       console.error('Error fetching landlords:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to load landlords');
+      setLandlords([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -239,28 +144,7 @@ export default function LandlordDashboardPage() {
     router.push('/dashboard/landlord/add');
   };
 
-  const handleViewLandlord = (landlordCode: string) => {
-    toast.info(`View landlord ${landlordCode} - Feature coming soon`);
-  };
 
-  const handleEditLandlord = (landlordCode: string) => {
-    toast.info(`Edit landlord ${landlordCode} - Feature coming soon`);
-  };
-
-  const handleDeleteLandlord = async (landlordCode: string) => {
-    if (!confirm('Are you sure you want to delete this landlord?')) {
-      return;
-    }
-
-    try {
-      // Simulate API call
-      toast.success('Landlord deleted successfully');
-      fetchLandlords(); // Refresh the list
-    } catch (error) {
-      console.error('Error deleting landlord:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to delete landlord');
-    }
-  };
 
   // Render status badge
   const renderStatusBadge = (status: string) => {
@@ -440,13 +324,12 @@ export default function LandlordDashboardPage() {
             <>
               {/* Table Header */}
               <div className="bg-muted/50 px-6 py-3 border-b border-border">
-                <div className="grid grid-cols-12 gap-4 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <div className="grid grid-cols-11 gap-4 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   <div className="col-span-3">Landlord</div>
                   <div className="col-span-3">Contact</div>
                   <div className="col-span-2">Type</div>
                   <div className="col-span-2">Portfolio</div>
                   <div className="col-span-1">Status</div>
-                  <div className="col-span-1">Actions</div>
                 </div>
               </div>
 
@@ -454,18 +337,18 @@ export default function LandlordDashboardPage() {
               <div className="divide-y divide-border">
                 {landlords.map((landlord) => (
                   <div key={landlord.id} className="px-6 py-4 hover:bg-muted/50">
-                    <div className="grid grid-cols-12 gap-4 items-start">
+                    <div className="grid grid-cols-11 gap-4 items-start">
                       {/* Landlord Info */}
                       <div className="col-span-3">
                         <div className="space-y-1">
                           <button
-                            onClick={() => handleViewLandlord(landlord.landlord_code)}
-                            className="text-blue-400 hover:text-blue-300 font-medium"
+                            onClick={() => router.push(`/dashboard/landlord/${landlord.id}`)}
+                            className="text-blue-400 hover:text-blue-300 font-medium hover:underline cursor-pointer"
                           >
-                            {landlord.landlord_code}
-                          </button>
-                          <div className="font-medium text-foreground">
                             {landlord.name}
+                          </button>
+                          <div className="text-sm text-muted-foreground">
+                            {landlord.email}
                           </div>
                           {landlord.company_name && (
                             <div className="text-sm text-muted-foreground">
@@ -478,14 +361,14 @@ export default function LandlordDashboardPage() {
                       {/* Contact */}
                       <div className="col-span-3">
                         <div className="space-y-1">
-                          <div className="text-sm text-muted-foreground">
-                            {landlord.email}
-                          </div>
                           {landlord.phone && (
                             <div className="text-sm text-muted-foreground">
                               {landlord.phone}
                             </div>
                           )}
+                          <div className="text-sm text-muted-foreground">
+                            ID: {landlord.id.slice(0, 8)}...
+                          </div>
                         </div>
                       </div>
 
@@ -510,10 +393,10 @@ export default function LandlordDashboardPage() {
                       <div className="col-span-2">
                         <div className="space-y-1">
                           <div className="text-sm text-white">
-                            {landlord.properties_count} Properties
+                            Portfolio Info
                           </div>
-                          <div className="text-sm text-green-400 font-medium">
-                            {formatCurrency(landlord.total_rental_income)}/month
+                          <div className="text-sm text-muted-foreground">
+                            Coming soon
                           </div>
                         </div>
                       </div>
@@ -521,33 +404,6 @@ export default function LandlordDashboardPage() {
                       {/* Status */}
                       <div className="col-span-1">
                         {renderStatusBadge(landlord.status)}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="col-span-1">
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleViewLandlord(landlord.landlord_code)}
-                            className="text-muted-foreground/70 hover:text-white"
-                            title="View"
-                          >
-                            <EyeIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleEditLandlord(landlord.landlord_code)}
-                            className="text-muted-foreground/70 hover:text-blue-400"
-                            title="Edit"
-                          >
-                            <PencilIcon className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteLandlord(landlord.landlord_code)}
-                            className="text-muted-foreground/70 hover:text-red-400"
-                            title="Delete"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </button>
-                        </div>
                       </div>
                     </div>
                   </div>

@@ -2,7 +2,8 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from properties.models import Property
-from tenants.models import Tenant, Lease
+from tenants.models import Tenant
+from leases.models import Lease
 from users.models import CustomUser
 
 
@@ -27,7 +28,7 @@ class Invoice(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     
     # Relationships
-    lease = models.ForeignKey('tenants.Lease', on_delete=models.CASCADE, related_name='invoices')
+    lease = models.ForeignKey('leases.Lease', on_delete=models.CASCADE, related_name='invoices')
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='invoices')
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='invoices')
     landlord = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='landlord_invoices', null=True, blank=True)

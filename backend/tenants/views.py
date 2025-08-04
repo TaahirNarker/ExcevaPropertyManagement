@@ -11,9 +11,10 @@ from .serializers import (
     TenantDetailSerializer,
     TenantCreateUpdateSerializer,
     TenantDocumentSerializer,
-    TenantCommunicationSerializer
+    TenantCommunicationSerializer,
 )
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
 
 
 # Create your views here.
@@ -35,31 +36,54 @@ class TenantListCreateView(generics.ListCreateAPIView):
             return TenantCreateUpdateSerializer
         return TenantListSerializer
     
+    def list(self, request, *args, **kwargs):
+        try:
+            return super().list(request, *args, **kwargs)
+        except Exception as e:
+            print(f"Error in tenant list view: {e}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            return Response(
+                {'error': f'Failed to fetch tenants: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     def get_queryset(self):
         """Filter queryset based on user role and search parameters."""
-        queryset = Tenant.objects.select_related('user').all()
-        
-        # Apply search filter if provided
-        search = self.request.query_params.get('search', None)
-        if search:
-            queryset = queryset.filter(
-                Q(user__first_name__icontains=search) |
-                Q(user__last_name__icontains=search) |
-                Q(email__icontains=search) |
-                Q(phone__icontains=search) |
-                Q(tenant_code__icontains=search)
-            )
-        
-        return queryset
+        try:
+            queryset = Tenant.objects.select_related('user').all()
+            
+            # Apply search filter if provided
+            search = self.request.query_params.get('search', None)
+            if search:
+                queryset = queryset.filter(
+                    Q(user__first_name__icontains=search) |
+                    Q(user__last_name__icontains=search) |
+                    Q(email__icontains=search) |
+                    Q(phone__icontains=search) |
+                    Q(tenant_code__icontains=search)
+                )
+            
+            return queryset
+        except Exception as e:
+            print(f"Error in tenant queryset: {e}")
+            # Fallback to basic query if prefetch fails
+            return Tenant.objects.select_related('user').all()
 
 
 class TenantDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update or delete a tenant instance.
     """
-    queryset = Tenant.objects.all()
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'tenant_code'
+    
+    def get_queryset(self):
+        try:
+            return Tenant.objects.select_related('user').all()
+        except Exception as e:
+            print(f"Error in tenant detail queryset: {e}")
+            return Tenant.objects.all()
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -121,6 +145,9 @@ class TenantCommunicationDetailView(generics.RetrieveUpdateDestroyAPIView):
         return TenantCommunication.objects.filter(tenant__tenant_code=self.kwargs['tenant_code'])
 
 
+
+
+
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def tenant_statistics(request, tenant_code):
@@ -162,3 +189,19 @@ def tenant_statistics(request, tenant_code):
             {'error': 'Tenant not found'},
             status=status.HTTP_404_NOT_FOUND
         )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def tenant_choices(request):
+    """Get tenant choices for dropdowns."""
+    tenants = Tenant.objects.all()
+    choices = [
+        {
+            'value': tenant.id,
+            'label': f"{tenant.user.get_full_name()} ({tenant.tenant_code})"
+        }
+        for tenant in tenants
+    ]
+    return Response(choices)
+
+

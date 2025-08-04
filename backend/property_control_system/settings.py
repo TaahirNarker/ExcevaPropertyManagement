@@ -50,11 +50,15 @@ INSTALLED_APPS = [
     # Local apps
     'properties',
     'tenants',
+    'leases',  # Lease management system
     'finance',
     'users',
+    'dashboard',  # Dashboard metrics and analytics
     'reports',
     'payments',  # Bitcoin Lightning payments via Strike API
     'debt_management',  # Debt collection and management
+    'landlords',  # Landlord management system
+    'crm',  # Customer Relationship Management
 ]
 
 MIDDLEWARE = [
@@ -231,7 +235,9 @@ WEBAUTHN_ORIGIN = ['https://propman.exceva.capital']
 CORS_ALLOWED_ORIGINS = [
     "https://propman.exceva.capital",
     "http://localhost:3000",  # Allow local development frontend
+    "http://localhost:3001",  # Allow local development frontend (alternative port)
     "http://127.0.0.1:3000",  # Alternative local address
+    "http://127.0.0.1:3001",  # Alternative local address (alternative port)
 ]
 
 CORS_ALLOW_CREDENTIALS = True

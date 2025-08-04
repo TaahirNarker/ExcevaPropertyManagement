@@ -11,11 +11,22 @@ import {
   BuildingOfficeIcon,
   UserIcon,
   ArrowLeftIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  PlusIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
+import { landlordApi } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import toast from 'react-hot-toast';
+
+// Bank account interface
+interface BankAccount {
+  id: string;
+  bank_name: string;
+  account_number: string;
+  branch_code: string;
+  account_type: string;
+}
 
 // Form data interface
 interface LandlordFormData {
@@ -33,10 +44,7 @@ interface LandlordFormData {
   city: string;
   province: string;
   postal_code: string;
-  bank_name: string;
-  account_number: string;
-  branch_code: string;
-  account_type: string;
+  bank_accounts: BankAccount[];
   notes: string;
 }
 
@@ -100,15 +108,48 @@ export default function AddLandlordPage() {
     city: '',
     province: '',
     postal_code: '',
-    bank_name: '',
-    account_number: '',
-    branch_code: '',
-    account_type: '',
+    bank_accounts: [],
     notes: '',
   });
   
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
+
+  // Generate unique ID for bank accounts
+  const generateBankAccountId = () => `bank_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  // Add new bank account
+  const addBankAccount = () => {
+    const newBankAccount: BankAccount = {
+      id: generateBankAccountId(),
+      bank_name: '',
+      account_number: '',
+      branch_code: '',
+      account_type: '',
+    };
+    setFormData(prev => ({
+      ...prev,
+      bank_accounts: [...prev.bank_accounts, newBankAccount],
+    }));
+  };
+
+  // Remove bank account
+  const removeBankAccount = (bankAccountId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      bank_accounts: prev.bank_accounts.filter(account => account.id !== bankAccountId),
+    }));
+  };
+
+  // Update bank account
+  const updateBankAccount = (bankAccountId: string, field: keyof BankAccount, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      bank_accounts: prev.bank_accounts.map(account =>
+        account.id === bankAccountId ? { ...account, [field]: value } : account
+      ),
+    }));
+  };
 
   // Handle input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -175,22 +216,24 @@ export default function AddLandlordPage() {
       }
     }
 
-    // Bank details validation (if any bank field is filled)
-    const bankFieldsFilled = formData.bank_name || formData.account_number || formData.branch_code || formData.account_type;
-    if (bankFieldsFilled) {
-      if (!formData.bank_name.trim()) {
-        newErrors.bank_name = 'Bank name is required';
+    // Bank details validation (if any bank account has fields filled)
+    formData.bank_accounts.forEach((account, index) => {
+      const bankFieldsFilled = account.bank_name || account.account_number || account.branch_code || account.account_type;
+      if (bankFieldsFilled) {
+        if (!account.bank_name.trim()) {
+          newErrors[`bank_accounts.${index}.bank_name`] = 'Bank name is required';
+        }
+        if (!account.account_number.trim()) {
+          newErrors[`bank_accounts.${index}.account_number`] = 'Account number is required';
+        }
+        if (!account.branch_code.trim()) {
+          newErrors[`bank_accounts.${index}.branch_code`] = 'Branch code is required';
+        }
+        if (!account.account_type.trim()) {
+          newErrors[`bank_accounts.${index}.account_type`] = 'Account type is required';
+        }
       }
-      if (!formData.account_number.trim()) {
-        newErrors.account_number = 'Account number is required';
-      }
-      if (!formData.branch_code.trim()) {
-        newErrors.branch_code = 'Branch code is required';
-      }
-      if (!formData.account_type.trim()) {
-        newErrors.account_type = 'Account type is required';
-      }
-    }
+    });
 
     // Postal code validation
     if (formData.postal_code.trim() && !/^\d{4}$/.test(formData.postal_code.trim())) {
@@ -213,13 +256,29 @@ export default function AddLandlordPage() {
     setLoading(true);
 
     try {
-      // Mock API call - replace with actual API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Prepare API data
+      const apiData = {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        type: formData.type,
+        company_name: formData.company_name || undefined,
+        vat_number: formData.vat_number || undefined,
+        id_number: formData.id_number || undefined,
+        tax_number: formData.tax_number || undefined,
+        street_address: formData.street_address || undefined,
+        address_line_2: formData.address_line_2 || undefined,
+        suburb: formData.suburb || undefined,
+        city: formData.city || undefined,
+        province: formData.province || undefined,
+        postal_code: formData.postal_code || undefined,
+        bank_accounts: formData.bank_accounts.length > 0 ? formData.bank_accounts : undefined,
+        notes: formData.notes || undefined,
+      };
+
+      const newLandlord = await landlordApi.createLandlord(apiData);
       
-      // Generate mock landlord code
-      const landlordCode = `LAN${(Math.floor(Math.random() * 999999) + 1).toString().padStart(6, '0')}`;
-      
-      toast.success(`Landlord ${landlordCode} created successfully!`);
+      toast.success(`Landlord ${newLandlord.name} created successfully!`);
       
       // Check if we should return to lease form
       const returnToLeaseForm = sessionStorage.getItem('returnToLeaseForm');
@@ -573,94 +632,135 @@ export default function AddLandlordPage() {
 
           {/* Banking Information */}
           <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
-            <h3 className="text-lg font-medium text-white mb-4">Banking Information</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-white">Banking Information</h3>
+              <button
+                type="button"
+                onClick={addBankAccount}
+                className="inline-flex items-center px-3 py-1 border border-blue-500 rounded-md text-sm font-medium text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <PlusIcon className="h-4 w-4 mr-1" />
+                Add Bank Account
+              </button>
+            </div>
             <p className="text-sm text-muted-foreground mb-4">
               Optional: Add bank details for payment processing
             </p>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Bank Name */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Bank Name
-                </label>
-                <select
-                  name="bank_name"
-                  value={formData.bank_name}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.bank_name ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Select Bank</option>
-                  {SA_BANKS.map(bank => (
-                    <option key={bank} value={bank}>
-                      {bank}
-                    </option>
-                  ))}
-                </select>
-                {errors.bank_name && <p className="mt-1 text-sm text-red-400">{errors.bank_name}</p>}
+            {formData.bank_accounts.length === 0 ? (
+              <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                <p className="text-muted-foreground">No bank accounts added</p>
+                <p className="text-sm text-muted-foreground">Click "Add Bank Account" to add banking information</p>
               </div>
+            ) : (
+              <div className="space-y-6">
+                {formData.bank_accounts.map((account, index) => (
+                  <div key={account.id} className="border border-gray-300 rounded-lg p-4 bg-white/5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-md font-medium text-white">Bank Account {index + 1}</h4>
+                      <button
+                        type="button"
+                        onClick={() => removeBankAccount(account.id)}
+                        className="text-red-400 hover:text-red-300"
+                        title="Remove Bank Account"
+                      >
+                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Bank Name */}
+                      <div>
+                        <label className="block text-sm font-medium text-white mb-2">
+                          Bank Name
+                        </label>
+                        <select
+                          value={account.bank_name}
+                          onChange={(e) => updateBankAccount(account.id, 'bank_name', e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            errors[`bank_accounts.${index}.bank_name`] ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                        >
+                          <option value="">Select Bank</option>
+                          {SA_BANKS.map(bank => (
+                            <option key={bank} value={bank}>
+                              {bank}
+                            </option>
+                          ))}
+                        </select>
+                        {errors[`bank_accounts.${index}.bank_name`] && (
+                          <p className="mt-1 text-sm text-red-400">{errors[`bank_accounts.${index}.bank_name`]}</p>
+                        )}
+                      </div>
 
-              {/* Account Type */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Account Type
-                </label>
-                <select
-                  name="account_type"
-                  value={formData.account_type}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.account_type ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  <option value="">Select Account Type</option>
-                  {ACCOUNT_TYPES.map(type => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-                {errors.account_type && <p className="mt-1 text-sm text-red-400">{errors.account_type}</p>}
-              </div>
+                      {/* Account Type */}
+                      <div>
+                        <label className="block text-sm font-medium text-white mb-2">
+                          Account Type
+                        </label>
+                        <select
+                          value={account.account_type}
+                          onChange={(e) => updateBankAccount(account.id, 'account_type', e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            errors[`bank_accounts.${index}.account_type`] ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                        >
+                          <option value="">Select Account Type</option>
+                          {ACCOUNT_TYPES.map(type => (
+                            <option key={type.value} value={type.value}>
+                              {type.label}
+                            </option>
+                          ))}
+                        </select>
+                        {errors[`bank_accounts.${index}.account_type`] && (
+                          <p className="mt-1 text-sm text-red-400">{errors[`bank_accounts.${index}.account_type`]}</p>
+                        )}
+                      </div>
 
-              {/* Account Number */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Account Number
-                </label>
-                <input
-                  type="text"
-                  name="account_number"
-                  value={formData.account_number}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.account_number ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="1234567890"
-                />
-                {errors.account_number && <p className="mt-1 text-sm text-red-400">{errors.account_number}</p>}
-              </div>
+                      {/* Account Number */}
+                      <div>
+                        <label className="block text-sm font-medium text-white mb-2">
+                          Account Number
+                        </label>
+                        <input
+                          type="text"
+                          value={account.account_number}
+                          onChange={(e) => updateBankAccount(account.id, 'account_number', e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            errors[`bank_accounts.${index}.account_number`] ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                          placeholder="1234567890"
+                        />
+                        {errors[`bank_accounts.${index}.account_number`] && (
+                          <p className="mt-1 text-sm text-red-400">{errors[`bank_accounts.${index}.account_number`]}</p>
+                        )}
+                      </div>
 
-              {/* Branch Code */}
-              <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Branch Code
-                </label>
-                <input
-                  type="text"
-                  name="branch_code"
-                  value={formData.branch_code}
-                  onChange={handleInputChange}
-                  className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    errors.branch_code ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="123456"
-                />
-                {errors.branch_code && <p className="mt-1 text-sm text-red-400">{errors.branch_code}</p>}
+                      {/* Branch Code */}
+                      <div>
+                        <label className="block text-sm font-medium text-white mb-2">
+                          Branch Code
+                        </label>
+                        <input
+                          type="text"
+                          value={account.branch_code}
+                          onChange={(e) => updateBankAccount(account.id, 'branch_code', e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            errors[`bank_accounts.${index}.branch_code`] ? 'border-red-500' : 'border-gray-300'
+                          }`}
+                          placeholder="123456"
+                        />
+                        {errors[`bank_accounts.${index}.branch_code`] && (
+                          <p className="mt-1 text-sm text-red-400">{errors[`bank_accounts.${index}.branch_code`]}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
           </div>
 
           {/* Notes */}

@@ -22,7 +22,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
-import { tenantAPI } from '@/lib/api';
+import { tenantApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 // Form validation schema
@@ -34,7 +34,8 @@ const tenantFormSchema = z.object({
   last_name: z.string().min(2, 'Last name is required'),
   rsa_id_number: z.string().optional(),
   passport_number: z.string().optional(),
-  trading_as: z.string().optional(),
+  business_name: z.string().optional(),
+  business_registration_number: z.string().optional(),
   
   // Contact Information
   emails: z.array(z.object({
@@ -63,6 +64,12 @@ const tenantFormSchema = z.object({
     branch_code: z.string().min(6, 'Branch code is required'),
     account_type: z.enum(['current', 'savings', 'credit']),
   })).optional(),
+}).refine((data) => {
+  // Require either RSA ID number or passport number
+  return data.rsa_id_number || data.passport_number;
+}, {
+  message: "Either RSA ID number or passport number is required",
+  path: ["rsa_id_number"], // This will show the error on the RSA ID field
 });
 
 export type TenantFormData = z.infer<typeof tenantFormSchema>;
@@ -81,7 +88,8 @@ export default function AddTenantPage() {
       last_name: '',
       rsa_id_number: '',
       passport_number: '',
-      trading_as: '',
+      business_name: '',
+      business_registration_number: '',
       emails: [{ email: '', type: 'primary' as const }],
       phones: [{ number: '', type: 'mobile' as const }],
       addresses: [{ street: '', city: '', province: '', postal_code: '', type: 'residential' as const }],
@@ -148,13 +156,15 @@ export default function AddTenantPage() {
       
       // Transform data to match backend expectations
       const tenantData = {
-        // User fields
+        // User fields (required by backend)
         email: data.emails[0]?.email || '',
         first_name: data.first_name,
         last_name: data.last_name,
         
         // Tenant fields
-        id_number: data.rsa_id_number || data.passport_number || '',
+        id_number: data.rsa_id_number || data.passport_number || (() => {
+          throw new Error('Either RSA ID number or passport number is required');
+        })(),
         date_of_birth: '1990-01-01', // Default date - you may want to add this field
         phone: data.phones[0]?.number || '',
         alternative_phone: data.phones[1]?.number || '',
@@ -179,15 +189,20 @@ export default function AddTenantPage() {
         
         // Status
         status: 'pending',
-        notes: `Type: ${data.type}${data.display_name ? `, Display Name: ${data.display_name}` : ''}${data.trading_as ? `, Trading As: ${data.trading_as}` : ''}`
+        notes: `Type: ${data.type}${data.display_name ? `, Display Name: ${data.display_name}` : ''}${data.business_name ? `, Business Name: ${data.business_name}` : ''}${data.business_registration_number ? `, Business Reg: ${data.business_registration_number}` : ''}`
       };
 
-      await tenantAPI.create(tenantData);
+      await tenantApi.createTenant(tenantData);
       toast.success('Tenant created successfully!');
       router.push('/dashboard/tenants');
     } catch (error) {
       console.error('Error creating tenant:', error);
-      toast.error('Failed to create tenant. Please try again.');
+      if (error.response?.data) {
+        console.error('Server error details:', error.response.data);
+        toast.error(`Failed to create tenant: ${JSON.stringify(error.response.data)}`);
+      } else {
+        toast.error('Failed to create tenant. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -279,10 +294,13 @@ export default function AddTenantPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-white mb-1">RSA ID Number</label>
+                  <label className="block text-sm font-medium text-white mb-1">
+                    RSA ID Number <span className="text-red-400">*</span>
+                  </label>
                   <input
                     type="text"
                     {...register('rsa_id_number')}
+                    placeholder="Enter RSA ID number"
                     className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                   />
                   {errors.rsa_id_number && (
@@ -291,33 +309,55 @@ export default function AddTenantPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-white mb-1">Passport Number</label>
+                  <label className="block text-sm font-medium text-white mb-1">
+                    Passport Number <span className="text-red-400">*</span>
+                  </label>
                   <input
                     type="text"
                     {...register('passport_number')}
+                    placeholder="Enter passport number"
                     className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                   />
                   {errors.passport_number && (
                     <p className="text-red-400 text-sm mt-1">{errors.passport_number.message}</p>
                   )}
                 </div>
+                
+                <div className="col-span-2">
+                  <p className="text-sm text-gray-300">
+                    <span className="text-red-400">*</span> Either RSA ID number or passport number is required
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Sole Proprietor Section */}
+            {/* Business Section */}
             {watchedType === 'Business' && (
               <div className="mt-6">
-                <h4 className="text-md font-medium text-white mb-3">Sole Proprietor</h4>
-                <div>
-                  <label className="block text-sm font-medium text-white mb-1">Trading As</label>
-                  <input
-                    type="text"
-                    {...register('trading_as')}
-                    className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                  {errors.trading_as && (
-                    <p className="text-red-400 text-sm mt-1">{errors.trading_as.message}</p>
-                  )}
+                <h4 className="text-md font-medium text-white mb-3">Business Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-1">Business Name</label>
+                    <input
+                      type="text"
+                      {...register('business_name')}
+                      className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    />
+                    {errors.business_name && (
+                      <p className="text-red-400 text-sm mt-1">{errors.business_name.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-1">Business Registration Number</label>
+                    <input
+                      type="text"
+                      {...register('business_registration_number')}
+                      className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    />
+                    {errors.business_registration_number && (
+                      <p className="text-red-400 text-sm mt-1">{errors.business_registration_number.message}</p>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

@@ -72,6 +72,31 @@ export interface Tenant {
   updated_at: string;
 }
 
+export interface LeaseHistory {
+  id: string;
+  property_name: string;
+  start_date: string;
+  end_date: string;
+  rent_amount: number;
+  status: string;
+}
+
+export interface Document {
+  id: string;
+  name: string;
+  type: string;
+  uploaded_at: string;
+  expires_at?: string;
+}
+
+export interface Communication {
+  id: string;
+  type: 'email' | 'phone' | 'sms' | 'note';
+  date: string;
+  subject: string;
+  content: string;
+}
+
 export interface Property {
   id: string;
   name: string;
@@ -359,6 +384,59 @@ export const tenantApi = {
     await fetchWithError(`${API_BASE_URL}/tenants/${id}/`, {
       method: 'DELETE',
     });
+  },
+
+  // Additional methods for compatibility
+  list: async (params?: any): Promise<{ results: Tenant[]; count: number }> => {
+    const queryParams = new URLSearchParams();
+    if (params?.page_size) queryParams.append('page_size', params.page_size.toString());
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.search) queryParams.append('search', params.search);
+    
+    const response = await fetchWithError(`${API_BASE_URL}/tenants/?${queryParams.toString()}`);
+    return response.json();
+  },
+
+  getAll: async (): Promise<Tenant[]> => {
+    const response = await fetchWithError(`${API_BASE_URL}/tenants/?page_size=1000`);
+    const data = await response.json();
+    return data.results || data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await fetchWithError(`${API_BASE_URL}/tenants/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Additional methods for tenant details
+  getTenantLeaseHistory: async (id: string): Promise<LeaseHistory[]> => {
+    const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/leases/`);
+    const data = await response.json();
+    return data.results || data;
+  },
+
+  getTenantDocuments: async (id: string): Promise<Document[]> => {
+    const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/documents/`);
+    const data = await response.json();
+    return data.results || data;
+  },
+
+  getTenantCommunications: async (id: string): Promise<Communication[]> => {
+    const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/communications/`);
+    const data = await response.json();
+    return data.results || data;
+  },
+
+  // Documents API
+  documents: {
+    upload: async (tenantId: string, formData: FormData): Promise<any> => {
+      const response = await fetchWithError(`${API_BASE_URL}/tenants/${tenantId}/documents/`, {
+        method: 'POST',
+        body: formData,
+      });
+      return response.json();
+    },
   },
 };
 
@@ -1027,6 +1105,64 @@ export const invoiceApi = {
 
   isLocked: (invoice: Invoice): boolean => {
     return invoice.is_locked || invoice.status === 'locked';
+  },
+};
+
+// Landlord API
+export const landlordApi = {
+  // Get all landlords
+  getLandlords: async (): Promise<{ id: string; name: string; email: string }[]> => {
+    try {
+      const response = await api.get('/landlords/');
+      return response.data.results || response.data;
+    } catch (error: any) {
+      // Silently handle 404 errors (API not implemented yet)
+      if (error.response?.status === 404) {
+        return [];
+      }
+      // Log other errors but still return empty array
+      console.error('Error fetching landlords:', error);
+      return [];
+    }
+  },
+
+  // Create new landlord
+  createLandlord: async (data: any): Promise<{ id: string; name: string; email: string }> => {
+    try {
+      const response = await api.post('/landlords/', data);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error creating landlord:', error);
+      throw error;
+    }
+  },
+
+  // Get single landlord
+  getLandlord: async (id: string): Promise<{ 
+    id: string; 
+    name: string; 
+    email: string;
+    bank_accounts?: Array<{
+      id: string;
+      bank_name: string;
+      account_number: string;
+      branch_code: string;
+      account_type: string;
+    }>;
+  }> => {
+    const response = await api.get(`/landlords/${id}/`);
+    return response.data;
+  },
+
+  // Update landlord
+  updateLandlord: async (id: string, data: any): Promise<{ id: string; name: string; email: string }> => {
+    const response = await api.patch(`/landlords/${id}/`, data);
+    return response.data;
+  },
+
+  // Delete landlord
+  deleteLandlord: async (id: string): Promise<void> => {
+    await api.delete(`/landlords/${id}/`);
   },
 };
 
