@@ -6,7 +6,7 @@
 📊 **Admin Panel**: https://propman.exceva.capital/admin/  
 🔌 **API Documentation**: https://propman.exceva.capital/api/
 
-<!-- Auto-deploy test: $(date) -->
+<!-- Auto-deploy test: $(date) - SSH Key Authentication Test -->
 
 ## 🎯 Overview
 
