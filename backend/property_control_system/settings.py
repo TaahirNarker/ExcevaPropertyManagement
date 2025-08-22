@@ -23,12 +23,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-temp-key-for-development-only')
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-temp-key-for-production-only')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,150.230.123.106,propman.exceva.capital,*', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='propman.exceva.capital,www.propman.exceva.capital,150.230.123.106', cast=Csv())
 
 
 # Application definition
@@ -227,18 +227,14 @@ SIMPLE_JWT = {
 }
 
 # WebAuthn Configuration
-WEBAUTHN_RP_ID = 'propman.exceva.capital'
-WEBAUTHN_RP_NAME = 'Property Management System'
-WEBAUTHN_ORIGIN = ['https://propman.exceva.capital']
+WEBAUTHN_RP_ID = config('WEBAUTHN_RP_ID', default='propman.exceva.capital')
+WEBAUTHN_RP_NAME = config('WEBAUTHN_RP_NAME', default='Property Management System')
+WEBAUTHN_ORIGIN = config('WEBAUTHN_ORIGIN', default='https://propman.exceva.capital', cast=Csv())
 
-# CORS Configuration - Updated for production
-CORS_ALLOWED_ORIGINS = [
-    "https://propman.exceva.capital",
-    "http://localhost:3000",  # Allow local development frontend
-    "http://localhost:3001",  # Allow local development frontend (alternative port)
-    "http://127.0.0.1:3000",  # Alternative local address
-    "http://127.0.0.1:3001",  # Alternative local address (alternative port)
-]
+# CORS Configuration - Production ready
+CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', 
+    default='https://propman.exceva.capital,https://www.propman.exceva.capital', 
+    cast=Csv())
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -310,7 +306,7 @@ STRIKE_WEBHOOK_SECRET = config('STRIKE_WEBHOOK_SECRET', default='')
 
 # Payment Configuration
 LIGHTNING_INVOICE_EXPIRY_MINUTES = config('LIGHTNING_INVOICE_EXPIRY_MINUTES', default=15, cast=int)
-PAYMENT_BASE_URL = config('PAYMENT_BASE_URL', default='http://localhost:3000/pay')
+PAYMENT_BASE_URL = config('PAYMENT_BASE_URL', default='https://propman.exceva.capital/pay')
 
 # Strike Webhook Settings
 STRIKE_WEBHOOK_EVENTS = [
@@ -343,4 +339,4 @@ INVOICE_REPLY_TO_EMAIL = config('INVOICE_REPLY_TO_EMAIL', default='admin@rentpil
 
 # Admin notification emails for payment confirmations
 PAYMENT_NOTIFICATION_EMAILS = config('PAYMENT_NOTIFICATION_EMAILS', default='admin@rentpilot.co.za')
-ADMIN_BASE_URL = config('ADMIN_BASE_URL', default='http://localhost:8000')
+ADMIN_BASE_URL = config('ADMIN_BASE_URL', default='https://propman.exceva.capital')

@@ -1,0 +1,58 @@
+name: 🚀 Auto Deploy to Production
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🚀 Deploy to Production Server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.SERVER_HOST }}
+        username: ${{ secrets.SERVER_USER }}
+        password: ${{ secrets.SERVER_PASSWORD }}
+        port: 22
+        script: |
+          echo "🚀 Auto-deploy triggered by GitHub push"
+          echo "📅 Deployment time: $(date)"
+          echo "🔗 Repository: ${{ github.repository }}"
+          echo "📝 Commit: ${{ github.sha }}"
+          
+          # Navigate to project directory
+          cd /var/www/ExcevaPropertyManagement
+          
+          # Pull latest changes
+          git pull origin main
+          
+          # Activate virtual environment
+          source backend/venv/bin/activate
+          
+          # Install/update dependencies
+          pip install -r backend/requirements.txt
+          
+          # Run database migrations
+          python backend/manage.py migrate
+          
+          # Collect static files
+          python backend/manage.py collectstatic --noinput
+          
+          # Restart services
+          pm2 restart all
+          
+          echo "✅ Deployment completed successfully!"
+          
+    - name: 📧 Notify Deployment Status
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+      env:
+        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}

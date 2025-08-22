@@ -2,6 +2,8 @@
 
 **Complete property portfolio management solution for landlords, property managers, and real estate professionals**
 
+<!-- Auto-deploy test: $(date) -->
+
 ## 🎯 Overview
 
 The Property Management System is a full-stack application designed to streamline property portfolio operations:
