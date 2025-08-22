@@ -23,36 +23,76 @@ jobs:
           echo "📅 Deployment time: $(date)"
           echo "🔗 Repository: ${{ github.repository }}"
           echo "📝 Commit: ${{ github.sha }}"
+          echo "👤 Triggered by: ${{ github.actor }}"
+          
+          # Set error handling
+          set -e
           
           # Navigate to project directory
+          echo "📁 Navigating to project directory..."
           cd /var/www/ExcevaPropertyManagement
           
+          # Check if directory exists
+          if [ ! -d "/var/www/ExcevaPropertyManagement" ]; then
+            echo "❌ Project directory not found. Creating it..."
+            sudo mkdir -p /var/www/ExcevaPropertyManagement
+            sudo chown ubuntu:ubuntu /var/www/ExcevaPropertyManagement
+          fi
+          
           # Pull latest changes
-          git pull origin main
+          echo "📥 Pulling latest changes from GitHub..."
+          git pull origin main || {
+            echo "❌ Failed to pull changes. Cloning repository..."
+            git clone https://github.com/TaahirNarker/ExcevaPropertyManagement.git .
+          }
+          
+          # Check if virtual environment exists
+          if [ ! -d "backend/venv" ]; then
+            echo "🐍 Creating virtual environment..."
+            cd backend
+            python3 -m venv venv
+            cd ..
+          fi
           
           # Activate virtual environment
+          echo "🔧 Activating virtual environment..."
           source backend/venv/bin/activate
           
           # Install/update dependencies
+          echo "📦 Installing/updating dependencies..."
           pip install -r backend/requirements.txt
           
           # Run database migrations
+          echo "🗄️ Running database migrations..."
           python backend/manage.py migrate
           
           # Collect static files
+          echo "📁 Collecting static files..."
           python backend/manage.py collectstatic --noinput
           
           # Restart services
-          pm2 restart all
+          echo "🔄 Restarting services..."
+          pm2 restart all || {
+            echo "⚠️ PM2 restart failed. Starting services..."
+            pm2 start backend/start_production.sh --name "exceva-backend"
+            pm2 start "npm run start" --name "exceva-frontend" --cwd frontend
+          }
           
           echo "✅ Deployment completed successfully!"
+          echo "🌐 Live site: https://propman.exceva.capital"
           
-    - name: 📧 Notify Deployment Status
+    - name: ✅ Deployment Status
       if: always()
-      uses: 8398a7/action-slack@v3
-      with:
-        status: ${{ job.status }}
-        channel: '#deployments'
-        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-      env:
-        SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      run: |
+        echo "🚀 Deployment Status: ${{ job.status }}"
+        echo "📅 Completed at: $(date)"
+        echo "🔗 Repository: ${{ github.repository }}"
+        echo "📝 Commit: ${{ github.sha }}"
+        echo "👤 Triggered by: ${{ github.actor }}"
+        
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ Deployment completed successfully!"
+          echo "🌐 Live site: https://propman.exceva.capital"
+        else
+          echo "❌ Deployment failed. Check the logs above for details."
+        fi
