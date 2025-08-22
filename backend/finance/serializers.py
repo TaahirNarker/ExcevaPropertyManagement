@@ -1,5 +1,8 @@
 from rest_framework import serializers
-from .models import Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog
+from .models import (
+    Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog,
+    TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings
+)
 from tenants.models import Tenant
 from leases.models import Lease
 from properties.models import Property
@@ -20,13 +23,18 @@ class InvoiceLineItemSerializer(serializers.ModelSerializer):
 class InvoicePaymentSerializer(serializers.ModelSerializer):
     """Serializer for invoice payments"""
     
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    recorded_by_name = serializers.CharField(source='recorded_by.get_full_name', read_only=True)
+    payment_method_display = serializers.CharField(source='get_payment_method_display', read_only=True)
+    
     class Meta:
         model = InvoicePayment
         fields = [
-            'id', 'amount', 'payment_date', 'payment_method', 'reference_number',
-            'notes', 'created_at', 'updated_at'
+            'id', 'amount', 'allocated_amount', 'payment_date', 'payment_method', 'payment_method_display',
+            'reference_number', 'notes', 'tenant', 'tenant_name', 'recorded_by', 'recorded_by_name',
+            'is_overpayment', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'tenant_name', 'recorded_by_name', 'payment_method_display', 'created_at', 'updated_at']
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
@@ -46,7 +54,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'id', 'invoice_number', 'title', 'issue_date', 'due_date', 'status',
             'lease', 'lease_code', 'property', 'property_name', 'tenant', 'tenant_name',
             'landlord', 'landlord_name', 'created_by', 'created_by_name',
-            'subtotal', 'tax_rate', 'tax_amount', 'total_amount',
+            'subtotal', 'tax_rate', 'tax_amount', 'total_amount', 'amount_paid', 'balance_due',
+            'billing_period_start', 'billing_period_end', 'scheduled_send_date',
             'notes', 'email_subject', 'email_recipient', 'bank_info', 'extra_notes',
             'is_locked', 'locked_at', 'locked_by', 'sent_at', 'sent_by',
             'invoice_type', 'parent_invoice',
@@ -236,4 +245,114 @@ class InvoiceAuditLogSerializer(serializers.ModelSerializer):
     
     def get_timestamp_formatted(self, obj):
         """Format timestamp for display"""
-        return obj.timestamp.strftime('%Y-%m-%d %H:%M:%S') 
+        return obj.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+
+
+class TenantCreditBalanceSerializer(serializers.ModelSerializer):
+    """Serializer for tenant credit balances"""
+    
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    
+    class Meta:
+        model = TenantCreditBalance
+        fields = ['id', 'tenant', 'tenant_name', 'balance', 'last_updated']
+        read_only_fields = ['id', 'tenant_name', 'last_updated']
+
+
+class RecurringChargeSerializer(serializers.ModelSerializer):
+    """Serializer for recurring charges"""
+    
+    lease_code = serializers.CharField(source='lease.lease_code', read_only=True)
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    
+    class Meta:
+        model = RecurringCharge
+        fields = [
+            'id', 'lease', 'lease_code', 'description', 'category', 'category_display',
+            'amount', 'is_active', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'lease_code', 'category_display', 'created_at', 'updated_at']
+
+
+class RentEscalationLogSerializer(serializers.ModelSerializer):
+    """Serializer for rent escalation logs"""
+    
+    lease_code = serializers.CharField(source='lease.lease_code', read_only=True)
+    applied_by_name = serializers.CharField(source='applied_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = RentEscalationLog
+        fields = [
+            'id', 'lease', 'lease_code', 'previous_rent', 'new_rent',
+            'escalation_percentage', 'escalation_amount', 'effective_date',
+            'reason', 'applied_by', 'applied_by_name', 'created_at'
+        ]
+        read_only_fields = ['id', 'lease_code', 'applied_by_name', 'created_at']
+
+
+class InvoiceDraftSerializer(serializers.ModelSerializer):
+    """Serializer for invoice drafts"""
+    
+    lease_code = serializers.CharField(source='lease.lease_code', read_only=True)
+    billing_month_formatted = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = InvoiceDraft
+        fields = [
+            'id', 'lease', 'lease_code', 'billing_month', 'billing_month_formatted',
+            'draft_data', 'user_modified', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'lease_code', 'billing_month_formatted', 'created_at', 'updated_at']
+    
+    def get_billing_month_formatted(self, obj):
+        """Format billing month for display"""
+        return obj.billing_month.strftime('%B %Y')
+
+
+class SystemSettingsSerializer(serializers.ModelSerializer):
+    """Serializer for system settings"""
+    
+    setting_type_display = serializers.CharField(source='get_setting_type_display', read_only=True)
+    
+    class Meta:
+        model = SystemSettings
+        fields = [
+            'id', 'key', 'value', 'setting_type', 'setting_type_display',
+            'description', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'setting_type_display', 'created_at', 'updated_at']
+
+
+class PaymentAllocationSerializer(serializers.Serializer):
+    """Serializer for payment allocation requests"""
+    
+    tenant_id = serializers.IntegerField()
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    payment_method = serializers.CharField(max_length=20)
+    payment_date = serializers.DateField()
+    reference_number = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    invoice_allocations = serializers.ListField(
+        child=serializers.DictField(child=serializers.DecimalField(max_digits=12, decimal_places=2)),
+        required=False
+    )
+    
+    def validate_payment_method(self, value):
+        """Validate payment method"""
+        valid_methods = [choice[0] for choice in InvoicePayment.PAYMENT_METHOD_CHOICES]
+        if value not in valid_methods:
+            raise serializers.ValidationError(f"Invalid payment method. Choose from: {valid_methods}")
+        return value
+
+
+class InvoiceNavigationSerializer(serializers.Serializer):
+    """Serializer for invoice navigation requests"""
+    
+    lease_id = serializers.IntegerField()
+    billing_month = serializers.DateField()
+    
+    def validate_billing_month(self, value):
+        """Ensure billing month is the first day of the month"""
+        if value.day != 1:
+            return value.replace(day=1)
+        return value 

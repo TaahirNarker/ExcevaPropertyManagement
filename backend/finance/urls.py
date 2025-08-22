@@ -2,7 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     InvoiceViewSet, InvoiceTemplateViewSet, InvoicePaymentViewSet, 
-    InvoiceLineItemViewSet, InvoiceAuditLogViewSet, FinanceAPIViewSet
+    InvoiceLineItemViewSet, InvoiceAuditLogViewSet, FinanceAPIViewSet,
+    PaymentAllocationViewSet, RecurringChargeViewSet, RentEscalationViewSet, SystemSettingsViewSet
 )
 
 # Create router and register viewsets
@@ -12,6 +13,10 @@ router.register(r'templates', InvoiceTemplateViewSet, basename='invoice-template
 router.register(r'payments', InvoicePaymentViewSet, basename='invoice-payment')
 router.register(r'line-items', InvoiceLineItemViewSet, basename='invoice-line-item')
 router.register(r'audit-logs', InvoiceAuditLogViewSet, basename='invoice-audit-log')
+router.register(r'payment-allocation', PaymentAllocationViewSet, basename='payment-allocation')
+router.register(r'recurring-charges', RecurringChargeViewSet, basename='recurring-charge')
+router.register(r'rent-escalation', RentEscalationViewSet, basename='rent-escalation')
+router.register(r'system-settings', SystemSettingsViewSet, basename='system-settings')
 
 urlpatterns = [
     path('', include(router.urls)),

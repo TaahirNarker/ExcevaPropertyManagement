@@ -9,12 +9,18 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from .models import Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog
+from .models import (
+    Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog,
+    TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings
+)
 from .serializers import (
     InvoiceSerializer, InvoiceCreateUpdateSerializer, InvoiceListSerializer,
     InvoiceTemplateSerializer, InvoicePaymentSerializer, InvoiceSummarySerializer,
-    InvoiceDetailSerializer, InvoiceLineItemSerializer, InvoiceAuditLogSerializer
+    InvoiceDetailSerializer, InvoiceLineItemSerializer, InvoiceAuditLogSerializer,
+    TenantCreditBalanceSerializer, RecurringChargeSerializer, RentEscalationLogSerializer,
+    InvoiceDraftSerializer, PaymentAllocationSerializer, InvoiceNavigationSerializer, SystemSettingsSerializer
 )
+from .services import InvoiceGenerationService, PaymentAllocationService, RentEscalationService
 from tenants.models import Tenant
 from leases.models import Lease
 from properties.models import Property
@@ -533,6 +539,158 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             'status': invoice.status,
             'is_locked': invoice.is_locked
         })
+    
+    @action(detail=False, methods=['post'], url_path='navigate-month')
+    def navigate_month(self, request):
+        """
+        Navigate to a specific month for invoice creation/editing.
+        Supports the existing frontend month navigation arrows.
+        """
+        serializer = InvoiceNavigationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        lease_id = serializer.validated_data['lease_id']
+        billing_month = serializer.validated_data['billing_month']
+        
+        try:
+            lease = Lease.objects.get(id=lease_id)
+        except Lease.DoesNotExist:
+            return Response({'error': 'Lease not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if user has permission to access this lease
+        if not request.user.is_staff and lease.created_by != request.user:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        invoice_service = InvoiceGenerationService()
+        
+        # Check if invoice already exists for this month
+        existing_invoice = Invoice.objects.filter(
+            lease=lease,
+            billing_period_start__year=billing_month.year,
+            billing_period_start__month=billing_month.month
+        ).first()
+        
+        if existing_invoice:
+            # Return existing invoice
+            serializer = InvoiceDetailSerializer(existing_invoice)
+            return Response({
+                'has_invoice': True,
+                'invoice': serializer.data,
+                'is_draft': False
+            })
+        
+        # Get or create draft for future months
+        invoice_data = invoice_service.get_or_create_invoice_draft(lease, billing_month)
+        
+        return Response({
+            'has_invoice': False,
+            'invoice_data': invoice_data,
+            'is_draft': True,
+            'billing_month': billing_month.strftime('%Y-%m-%d')
+        })
+    
+    @action(detail=False, methods=['post'], url_path='save-draft')
+    def save_draft(self, request):
+        """
+        Save user modifications to an invoice draft.
+        """
+        lease_id = request.data.get('lease_id')
+        billing_month_str = request.data.get('billing_month')
+        invoice_data = request.data.get('invoice_data')
+        
+        if not all([lease_id, billing_month_str, invoice_data]):
+            return Response({
+                'error': 'lease_id, billing_month, and invoice_data are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            lease = Lease.objects.get(id=lease_id)
+            billing_month = datetime.strptime(billing_month_str, '%Y-%m-%d').date()
+        except (Lease.DoesNotExist, ValueError) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check permissions
+        if not request.user.is_staff and lease.created_by != request.user:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        invoice_service = InvoiceGenerationService()
+        draft = invoice_service.save_invoice_draft(lease, billing_month, invoice_data, request.user)
+        
+        serializer = InvoiceDraftSerializer(draft)
+        return Response({
+            'success': True,
+            'draft': serializer.data,
+            'message': 'Draft saved successfully'
+        })
+    
+    @action(detail=False, methods=['post'], url_path='generate-initial')
+    def generate_initial_invoice(self, request):
+        """
+        Generate initial invoice when a lease is created.
+        """
+        lease_id = request.data.get('lease_id')
+        
+        if not lease_id:
+            return Response({'error': 'lease_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            lease = Lease.objects.get(id=lease_id)
+        except Lease.DoesNotExist:
+            return Response({'error': 'Lease not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if initial invoice already exists
+        existing_invoice = Invoice.objects.filter(
+            lease=lease,
+            invoice_type='regular'
+        ).first()
+        
+        if existing_invoice:
+            return Response({
+                'error': 'Initial invoice already exists for this lease',
+                'invoice_id': existing_invoice.id
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        invoice_service = InvoiceGenerationService()
+        invoice = invoice_service.generate_initial_lease_invoice(lease, request.user)
+        
+        serializer = InvoiceDetailSerializer(invoice)
+        return Response({
+            'success': True,
+            'invoice': serializer.data,
+            'message': 'Initial invoice generated successfully'
+        })
+    
+    @action(detail=True, methods=['post'], url_path='send')
+    def send_invoice(self, request, pk=None):
+        """
+        Send an invoice (locks it and updates status).
+        """
+        invoice = self.get_object()
+        
+        if invoice.status != 'draft':
+            return Response({
+                'error': f'Cannot send invoice with status: {invoice.get_status_display()}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if invoice.is_locked:
+            return Response({
+                'error': 'Invoice is already locked'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update invoice status and lock it
+        invoice.status = 'sent'
+        invoice.issue_date = timezone.now().date()
+        invoice.sent_at = timezone.now()
+        invoice.sent_by = request.user
+        invoice.lock_invoice(request.user)
+        
+        serializer = InvoiceDetailSerializer(invoice)
+        return Response({
+            'success': True,
+            'invoice': serializer.data,
+            'message': 'Invoice sent successfully'
+        })
 
 
 class InvoiceLineItemViewSet(viewsets.ModelViewSet):
@@ -957,3 +1115,215 @@ class FinanceAPIViewSet(viewsets.ViewSet):
                 {'error': str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class PaymentAllocationViewSet(viewsets.ViewSet):
+    """
+    ViewSet for handling payment allocation across invoices
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['post'], url_path='allocate')
+    def allocate_payment(self, request):
+        """
+        Allocate a payment across multiple invoices
+        """
+        serializer = PaymentAllocationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        data = serializer.validated_data
+        
+        try:
+            tenant = Tenant.objects.get(id=data['tenant_id'])
+        except Tenant.DoesNotExist:
+            return Response({'error': 'Tenant not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get invoices to allocate payment to
+        invoice_allocations = data.get('invoice_allocations', [])
+        invoices = []
+        
+        if invoice_allocations:
+            # Manual allocation
+            for allocation in invoice_allocations:
+                invoice_id = allocation.get('invoice_id')
+                try:
+                    invoice = Invoice.objects.get(id=invoice_id, tenant=tenant)
+                    invoices.append(invoice)
+                except Invoice.DoesNotExist:
+                    return Response({
+                        'error': f'Invoice {invoice_id} not found for this tenant'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            # Auto-allocation to oldest unpaid invoices
+            invoices = Invoice.objects.filter(
+                tenant=tenant,
+                balance_due__gt=0
+            ).order_by('due_date')
+        
+        # Allocate payment
+        payment_service = PaymentAllocationService()
+        payment_records = payment_service.allocate_payment(
+            tenant=tenant,
+            amount=data['amount'],
+            invoices=invoices,
+            payment_method=data['payment_method'],
+            reference_number=data.get('reference_number', ''),
+            payment_date=data['payment_date'],
+            user=request.user,
+            notes=data.get('notes', '')
+        )
+        
+        # Return payment records
+        serializer = InvoicePaymentSerializer(payment_records, many=True)
+        return Response({
+            'success': True,
+            'payments': serializer.data,
+            'message': f'Payment of R{data["amount"]} allocated successfully'
+        })
+    
+    @action(detail=False, methods=['get'], url_path='credit-balance/(?P<tenant_id>[^/.]+)')
+    def get_credit_balance(self, request, tenant_id=None):
+        """
+        Get tenant's current credit balance
+        """
+        try:
+            tenant = Tenant.objects.get(id=tenant_id)
+        except Tenant.DoesNotExist:
+            return Response({'error': 'Tenant not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        payment_service = PaymentAllocationService()
+        balance = payment_service.get_tenant_credit_balance(tenant)
+        
+        return Response({
+            'tenant_id': tenant.id,
+            'tenant_name': f"{tenant.user.first_name} {tenant.user.last_name}".strip() or tenant.user.username,
+            'credit_balance': float(balance)
+        })
+    
+    @action(detail=False, methods=['post'], url_path='apply-credit')
+    def apply_credit_balance(self, request):
+        """
+        Apply tenant credit balance to an invoice
+        """
+        tenant_id = request.data.get('tenant_id')
+        invoice_id = request.data.get('invoice_id')
+        amount = request.data.get('amount')
+        
+        if not all([tenant_id, invoice_id, amount]):
+            return Response({
+                'error': 'tenant_id, invoice_id, and amount are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            tenant = Tenant.objects.get(id=tenant_id)
+            invoice = Invoice.objects.get(id=invoice_id, tenant=tenant)
+            amount = Decimal(str(amount))
+        except (Tenant.DoesNotExist, Invoice.DoesNotExist, ValueError) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            credit_balance = tenant.credit_balance
+            payment = credit_balance.apply_credit_to_invoice(invoice, amount, request.user)
+            
+            serializer = InvoicePaymentSerializer(payment)
+            return Response({
+                'success': True,
+                'payment': serializer.data,
+                'remaining_credit': float(credit_balance.balance),
+                'message': f'Credit of R{amount} applied to invoice'
+            })
+        except (TenantCreditBalance.DoesNotExist, ValueError) as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class RecurringChargeViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing recurring charges
+    """
+    queryset = RecurringCharge.objects.all()
+    serializer_class = RecurringChargeSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['lease', 'category', 'is_active']
+    search_fields = ['description', 'lease__lease_code']
+    ordering_fields = ['amount', 'created_at']
+    ordering = ['-created_at']
+
+
+class RentEscalationViewSet(viewsets.ViewSet):
+    """
+    ViewSet for handling rent escalations
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['post'], url_path='process-due')
+    def process_due_escalations(self, request):
+        """
+        Process all due rent escalations
+        """
+        escalation_service = RentEscalationService()
+        escalated_leases = escalation_service.process_due_escalations(request.user)
+        
+        return Response({
+            'success': True,
+            'escalated_count': len(escalated_leases),
+            'escalated_leases': [
+                {
+                    'lease_id': lease.id,
+                    'lease_code': lease.lease_code if hasattr(lease, 'lease_code') else f"L-{lease.id}",
+                    'property_name': lease.property.name,
+                    'tenant_name': lease.tenant.name,
+                    'new_rent': float(lease.monthly_rent)
+                }
+                for lease in escalated_leases
+            ],
+            'message': f'{len(escalated_leases)} rent escalations processed'
+        })
+    
+    @action(detail=False, methods=['get'], url_path='history/(?P<lease_id>[^/.]+)')
+    def get_rent_history(self, request, lease_id=None):
+        """
+        Get rent escalation history for a lease
+        """
+        try:
+            lease = Lease.objects.get(id=lease_id)
+        except Lease.DoesNotExist:
+            return Response({'error': 'Lease not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        escalation_service = RentEscalationService()
+        history = escalation_service.get_rent_history(lease)
+        
+        return Response({
+            'lease_id': lease.id,
+            'current_rent': float(lease.monthly_rent),
+            'escalation_history': history
+        })
+
+
+class SystemSettingsViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing system settings
+    """
+    queryset = SystemSettings.objects.all()
+    serializer_class = SystemSettingsSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['setting_type', 'key']
+    
+    def get_queryset(self):
+        """Only staff can access system settings"""
+        if not self.request.user.is_staff:
+            return SystemSettings.objects.none()
+        return SystemSettings.objects.all()
+    
+    @action(detail=False, methods=['get'], url_path='vat-rate')
+    def get_vat_rate(self, request):
+        """
+        Get current VAT rate
+        """
+        vat_rate = SystemSettings.get_vat_rate()
+        return Response({
+            'vat_rate': vat_rate,
+            'formatted': f'{vat_rate}%'
+        })

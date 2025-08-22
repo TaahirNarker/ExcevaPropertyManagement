@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog
+from .models import (
+    Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog,
+    TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings
+)
 
 
 class InvoiceLineItemInline(admin.TabularInline):
@@ -138,6 +141,55 @@ class InvoiceTemplateAdmin(admin.ModelAdmin):
 
 @admin.register(InvoicePayment)
 class InvoicePaymentAdmin(admin.ModelAdmin):
-    list_display = ['invoice', 'amount', 'payment_date', 'payment_method']
-    list_filter = ['payment_method', 'payment_date']
-    search_fields = ['invoice__invoice_number', 'reference_number']
+    list_display = ['invoice', 'tenant', 'amount', 'allocated_amount', 'payment_date', 'payment_method', 'is_overpayment']
+    list_filter = ['payment_method', 'payment_date', 'is_overpayment']
+    search_fields = ['invoice__invoice_number', 'reference_number', 'tenant__name']
+
+
+@admin.register(TenantCreditBalance)
+class TenantCreditBalanceAdmin(admin.ModelAdmin):
+    list_display = ['tenant', 'balance', 'last_updated']
+    list_filter = ['last_updated']
+    search_fields = ['tenant__name']
+    readonly_fields = ['last_updated']
+
+
+@admin.register(RecurringCharge)
+class RecurringChargeAdmin(admin.ModelAdmin):
+    list_display = ['lease', 'description', 'category', 'amount', 'is_active', 'created_at']
+    list_filter = ['category', 'is_active', 'created_at']
+    search_fields = ['description', 'lease__tenant__name', 'lease__property__name']
+
+
+@admin.register(RentEscalationLog)
+class RentEscalationLogAdmin(admin.ModelAdmin):
+    list_display = ['lease', 'previous_rent', 'new_rent', 'effective_date', 'reason', 'applied_by']
+    list_filter = ['effective_date', 'applied_by']
+    search_fields = ['lease__tenant__name', 'lease__property__name', 'reason']
+    readonly_fields = ['created_at']
+
+
+@admin.register(InvoiceDraft)
+class InvoiceDraftAdmin(admin.ModelAdmin):
+    list_display = ['lease', 'billing_month', 'user_modified', 'created_at', 'updated_at']
+    list_filter = ['user_modified', 'billing_month', 'created_at']
+    search_fields = ['lease__tenant__name', 'lease__property__name']
+    readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(SystemSettings)
+class SystemSettingsAdmin(admin.ModelAdmin):
+    list_display = ['key', 'value', 'setting_type', 'description']
+    list_filter = ['setting_type']
+    search_fields = ['key', 'description']
+    readonly_fields = ['created_at', 'updated_at']
+    
+    def get_queryset(self, request):
+        """Only superusers can see all settings"""
+        if request.user.is_superuser:
+            return super().get_queryset(request)
+        return SystemSettings.objects.none()
+    
+    def has_module_permission(self, request):
+        """Only superusers can access system settings"""
+        return request.user.is_superuser

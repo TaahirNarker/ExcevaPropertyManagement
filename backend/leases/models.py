@@ -122,6 +122,41 @@ class Lease(models.Model):
         help_text="Notice period required to terminate lease"
     )
     
+    # Rent Escalation Settings
+    ESCALATION_TYPE_CHOICES = [
+        ('percentage', 'Percentage Increase'),
+        ('amount', 'Fixed Amount Increase'),
+        ('none', 'No Escalation'),
+    ]
+    escalation_type = models.CharField(
+        max_length=20,
+        choices=ESCALATION_TYPE_CHOICES,
+        default='none',
+        help_text="Type of rent escalation"
+    )
+    escalation_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0.00,
+        help_text="Annual escalation percentage"
+    )
+    escalation_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0.00,
+        help_text="Fixed escalation amount"
+    )
+    escalation_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date when rent escalation should occur annually"
+    )
+    next_escalation_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Next scheduled escalation date"
+    )
+    
     # Invoice Settings
     invoice_date = models.DateField(
         null=True,
@@ -177,7 +212,84 @@ class Lease(models.Model):
     def save(self, *args, **kwargs):
         """Override save to run validation"""
         self.full_clean()
+        
+        # Set next escalation date if escalation is enabled
+        if self.escalation_type != 'none' and self.escalation_date and not self.next_escalation_date:
+            # Find the next escalation date after the lease start date
+            current_year = self.start_date.year
+            escalation_this_year = self.escalation_date.replace(year=current_year)
+            
+            if escalation_this_year <= self.start_date:
+                # Escalation date has passed this year, set for next year
+                self.next_escalation_date = self.escalation_date.replace(year=current_year + 1)
+            else:
+                # Escalation date hasn't passed this year
+                self.next_escalation_date = escalation_this_year
+        
         super().save(*args, **kwargs)
+    
+    def apply_rent_escalation(self, user=None):
+        """Apply rent escalation and create audit log"""
+        if self.escalation_type == 'none' or not self.next_escalation_date:
+            return False
+        
+        from finance.models import RentEscalationLog
+        from django.utils import timezone
+        
+        # Check if escalation is due
+        if self.next_escalation_date > timezone.now().date():
+            return False
+        
+        previous_rent = self.monthly_rent
+        
+        if self.escalation_type == 'percentage':
+            escalation_amount = self.monthly_rent * (self.escalation_percentage / 100)
+            self.monthly_rent += escalation_amount
+        elif self.escalation_type == 'amount':
+            escalation_amount = self.escalation_amount
+            self.monthly_rent += self.escalation_amount
+        
+        # Create escalation log
+        RentEscalationLog.objects.create(
+            lease=self,
+            previous_rent=previous_rent,
+            new_rent=self.monthly_rent,
+            escalation_percentage=self.escalation_percentage if self.escalation_type == 'percentage' else None,
+            escalation_amount=escalation_amount,
+            effective_date=self.next_escalation_date,
+            applied_by=user
+        )
+        
+        # Set next escalation date
+        next_year = self.next_escalation_date.year + 1
+        self.next_escalation_date = self.escalation_date.replace(year=next_year)
+        
+        self.save()
+        return True
+    
+    def get_current_monthly_charges(self):
+        """Get all current monthly charges including rent and recurring charges"""
+        charges = [
+            {
+                'description': 'Monthly Rent',
+                'category': 'rent',
+                'amount': self.monthly_rent
+            }
+        ]
+        
+        # Add active recurring charges
+        for charge in self.recurring_charges.filter(is_active=True):
+            charges.append({
+                'description': charge.description,
+                'category': charge.category,
+                'amount': charge.amount
+            })
+        
+        return charges
+    
+    def should_apply_vat(self):
+        """Determine if VAT should be applied based on property type"""
+        return self.property.property_type == 'commercial'
 
 
 class LeaseAttachment(models.Model):
