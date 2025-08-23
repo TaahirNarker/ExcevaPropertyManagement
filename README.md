@@ -1,10 +1,9 @@
-# 🏢 Exceva Property Management System
+# Exceva Property Management System
 
-**Complete property portfolio management solution for landlords, property managers, and real estate professionals**
-
-🚀 **Live Demo**: https://propman.exceva.capital  
-📊 **Admin Panel**: https://propman.exceva.capital/admin/  
-🔌 **API Documentation**: https://propman.exceva.capital/api/
+> **🚀 Live Demo:** [https://propman.exceva.capital](https://propman.exceva.capital)  
+> **🔧 API Status:** [https://propman.exceva.capital/api/health/](https://propman.exceva.capital/api/health/)  
+> **📱 Frontend:** [https://propman.exceva.capital](https://propman.exceva.capital)  
+> **🔐 Backend:** [https://propman.exceva.capital/api/](https://propman.exceva.capital/api/)
 
 <!-- Auto-deploy test: $(date) - Network Connectivity Investigation -->
 
@@ -18,6 +17,10 @@ The Property Management System is a full-stack application designed to streamlin
 - **Analytics & Reports**: Performance insights and financial analytics
 
 ## 🚀 Auto-Deploy System
+
+> **Status:** 🔴 **CRITICAL ISSUE** - SSH service down, backend API returning 502 errors  
+> **Last Test:** 2025-08-23 12:00 UTC  
+> **Action Required:** Service restart needed via auto-deploy workflow
 
 ### **GitHub Actions CI/CD**
 - **Automatic deployment** on every push to `main` branch
