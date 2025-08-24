@@ -1,0 +1,88 @@
+name: 🚀 Auto-Deploy via HTTP Webhook
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🚀 Trigger HTTP Deployment
+      run: |
+        echo "🚀 Auto-deploy triggered by GitHub push"
+        echo "📅 Deployment time: $(date)"
+        echo "🔗 Repository: ${{ github.repository }}"
+        echo "📝 Commit: ${{ github.sha }}"
+        echo "👤 Triggered by: ${{ github.actor }}"
+        
+        # Wait a moment for the server to process the git pull
+        echo "⏳ Waiting for server to process changes..."
+        sleep 10
+        
+        # Test the deployment webhook endpoint
+        echo "🔧 Testing deployment webhook..."
+        
+        # First, check if the webhook endpoint is accessible
+        WEBHOOK_URL="https://propman.exceva.capital/api/deploy/health/"
+        echo "🔍 Testing webhook health endpoint: $WEBHOOK_URL"
+        
+        HEALTH_RESPONSE=$(curl -s -w "%{http_code}" "$WEBHOOK_URL" -o /tmp/health_response.txt)
+        HTTP_CODE="${HEALTH_RESPONSE: -3}"
+        
+        if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Webhook health endpoint is accessible"
+            cat /tmp/health_response.txt
+        else
+            echo "❌ Webhook health endpoint returned HTTP $HTTP_CODE"
+            cat /tmp/health_response.txt
+        fi
+        
+        # Now trigger the service restart
+        echo "🔄 Triggering service restart..."
+        RESTART_URL="https://propman.exceva.capital/api/deploy/restart/"
+        
+        # Use a simple POST request to trigger the restart
+        RESTART_RESPONSE=$(curl -s -w "%{http_code}" -X POST "$RESTART_URL" -o /tmp/restart_response.txt)
+        RESTART_HTTP_CODE="${RESTART_RESPONSE: -3}"
+        
+        if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Service restart triggered successfully"
+            cat /tmp/restart_response.txt
+        else
+            echo "❌ Service restart failed with HTTP $RESTART_HTTP_CODE"
+            cat /tmp/restart_response.txt
+        fi
+        
+        # Wait for services to restart
+        echo "⏳ Waiting for services to restart..."
+        sleep 30
+        
+        # Test the main API endpoint
+        echo "🔍 Testing main API endpoint..."
+        API_RESPONSE=$(curl -s -w "%{http_code}" "https://propman.exceva.capital/api/health/" -o /tmp/api_response.txt)
+        API_HTTP_CODE="${API_RESPONSE: -3}"
+        
+        if [ "$API_HTTP_CODE" = "200" ]; then
+            echo "✅ Main API endpoint is working"
+            cat /tmp/api_response.txt
+        else
+            echo "❌ Main API endpoint returned HTTP $API_HTTP_CODE"
+            cat /tmp/api_response.txt
+        fi
+        
+        echo "🌐 Live site: https://propman.exceva.capital"
+        
+    - name: 📊 Deployment Summary
+      run: |
+        echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Repository:** ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment Method:** HTTP Webhook (No SSH Required)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Status:** ✅ Deployment workflow completed" >> $GITHUB_STEP_SUMMARY
+        echo "**Live Site:** https://propman.exceva.capital" >> $GITHUB_STEP_SUMMARY

@@ -93,6 +93,9 @@ urlpatterns = [
     # Landlord management endpoints
     path('', include('landlords.urls')),
     
+    # Deploy webhook endpoints (for service management without SSH)
+    path('deploy/', include('deploy_webhook.urls')),
+    
     # Placeholder endpoints for frontend development
     path('units/', placeholder_list_view, name='units-list'),
     path('units/<str:pk>/', placeholder_detail_view, name='units-detail'),
