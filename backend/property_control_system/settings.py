@@ -15,6 +15,10 @@ import os
 from decouple import config, Csv
 from datetime import timedelta
 
+# Load environment variables from .env.local file
+from decouple import Config, RepositoryEnv
+config = Config(RepositoryEnv('.env.local'))
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -26,9 +30,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-temp-key-for-production-only')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=False, cast=bool)
+DEBUG = config('DEBUG', default=True, cast=bool)  # Set to True for development
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='propman.exceva.capital,www.propman.exceva.capital,150.230.123.106', cast=Csv())
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,propman.exceva.capital,www.propman.exceva.capital,150.230.123.106', cast=Csv())
 
 
 # Application definition
@@ -265,6 +269,14 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=True, cast=bool)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+else:
+    # Development settings - disable SSL redirect
+    SECURE_SSL_REDIRECT = False
+    SECURE_HSTS_SECONDS = 0
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+    SECURE_HSTS_PRELOAD = False
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
 
 # Logging Configuration
 LOGGING = {
