@@ -1106,6 +1106,188 @@ export const invoiceApi = {
   isLocked: (invoice: Invoice): boolean => {
     return invoice.is_locked || invoice.status === 'locked';
   },
+
+  // New Payment Reconciliation Methods
+  importBankCSV: async (csvFile: File, bankName: string): Promise<{
+    success: boolean;
+    batch_id: string;
+    total_transactions: number;
+    successful_reconciliations: number;
+    manual_review_required: number;
+    failed_transactions: number;
+    error?: string;
+  }> => {
+    const formData = new FormData();
+    formData.append('csv_file', csvFile);
+    formData.append('bank_name', bankName);
+    
+    const response = await api.post('/finance/payment-reconciliation/import-csv/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  recordManualPayment: async (data: {
+    lease_id: number;
+    payment_method: string;
+    amount: number;
+    payment_date: string;
+    reference_number?: string;
+    notes?: string;
+  }): Promise<{
+    success: boolean;
+    payment_id: number;
+    status: string;
+    message: string;
+    error?: string;
+  }> => {
+    const response = await api.post('/finance/payment-reconciliation/manual-payment/', data);
+    return response.data;
+  },
+
+  allocatePayment: async (data: {
+    payment_id?: number;
+    bank_transaction_id?: number;
+    allocations: Array<{
+      invoice_id: number;
+      amount: number;
+      notes?: string;
+    }>;
+    create_credit?: boolean;
+    notes?: string;
+  }): Promise<{
+    success: boolean;
+    total_allocated: number;
+    allocations_created: number;
+    message: string;
+    error?: string;
+  }> => {
+    const response = await api.post('/finance/payment-reconciliation/allocate-payment/', data);
+    return response.data;
+  },
+
+  createAdjustment: async (data: {
+    invoice_id: number;
+    adjustment_type: string;
+    amount: number;
+    reason: string;
+    notes?: string;
+    effective_date: string;
+  }): Promise<{
+    success: boolean;
+    adjustment_id: number;
+    new_invoice_total: number;
+    new_balance_due: number;
+    message: string;
+    error?: string;
+  }> => {
+    const response = await api.post('/finance/payment-reconciliation/create-adjustment/', data);
+    return response.data;
+  },
+
+  getTenantStatement: async (tenantId: number, startDate?: string, endDate?: string): Promise<{
+    success: boolean;
+    tenant: {
+      id: number;
+      name: string;
+      email: string;
+    };
+    lease: {
+      id: number;
+      unit: string;
+      monthly_rent: number;
+    };
+    statement_period: {
+      start_date: string;
+      end_date: string;
+      generated_date: string;
+    };
+    summary: {
+      opening_balance: number;
+      total_charges: number;
+      total_payments: number;
+      total_adjustments: number;
+      closing_balance: number;
+      credit_balance: number;
+      overdue_amount: number;
+    };
+    transactions: Array<{
+      date: string;
+      type: string;
+      description: string;
+      reference: string;
+      charges: number;
+      payments: number;
+      adjustments: number;
+      balance: number;
+    }>;
+    outstanding_invoices: Array<{
+      invoice_id: number;
+      invoice_number: string;
+      due_date: string;
+      amount: number;
+      days_overdue: number;
+    }>;
+    error?: string;
+  }> => {
+    const params: any = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    
+    const response = await api.get(`/finance/payment-reconciliation/tenant-statement/${tenantId}/`, { params });
+    return response.data;
+  },
+
+  getUnmatchedPayments: async (): Promise<{
+    success: boolean;
+    unmatched_transactions: Array<{
+      id: number;
+      transaction_date: string;
+      description: string;
+      amount: number;
+      tenant_reference: string;
+      status: string;
+      tenant_name?: string;
+      property_name?: string;
+    }>;
+    pending_payments: Array<{
+      id: number;
+      payment_date: string;
+      amount: number;
+      payment_method: string;
+      tenant_name: string;
+      property_name: string;
+      unit_number: string;
+      status: string;
+    }>;
+    total_unmatched: number;
+    error?: string;
+  }> => {
+    const response = await api.get('/finance/payment-reconciliation/unmatched-payments/');
+    return response.data;
+  },
+
+  getPaymentStatus: async (paymentId: number): Promise<{
+    success: boolean;
+    payment: any;
+    payment_type: string;
+    allocations: Array<{
+      id: number;
+      invoice_number: string;
+      tenant_name: string;
+      allocated_amount: number;
+      allocation_type: string;
+      allocation_date: string;
+    }>;
+    total_allocated: number;
+    allocation_count: number;
+    error?: string;
+  }> => {
+    const response = await api.get(`/finance/payment-reconciliation/payment-status/${paymentId}/`);
+    return response.data;
+  },
 };
 
 // Landlord API

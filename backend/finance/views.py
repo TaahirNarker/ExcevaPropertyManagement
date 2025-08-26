@@ -11,16 +11,25 @@ from decimal import Decimal
 
 from .models import (
     Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog,
-    TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings
+    TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings,
+    # Payment reconciliation models
+    BankTransaction, ManualPayment, PaymentAllocation
 )
 from .serializers import (
     InvoiceSerializer, InvoiceCreateUpdateSerializer, InvoiceListSerializer,
     InvoiceTemplateSerializer, InvoicePaymentSerializer, InvoiceSummarySerializer,
     InvoiceDetailSerializer, InvoiceLineItemSerializer, InvoiceAuditLogSerializer,
     TenantCreditBalanceSerializer, RecurringChargeSerializer, RentEscalationLogSerializer,
-    InvoiceDraftSerializer, PaymentAllocationSerializer, InvoiceNavigationSerializer, SystemSettingsSerializer
+    InvoiceDraftSerializer, PaymentAllocationSerializer, InvoiceNavigationSerializer, SystemSettingsSerializer,
+    # Payment reconciliation serializers
+    CSVImportRequestSerializer, ManualPaymentRequestSerializer, PaymentAllocationRequestSerializer,
+    AdjustmentRequestSerializer, BankTransactionSerializer, ManualPaymentSerializer
 )
-from .services import InvoiceGenerationService, PaymentAllocationService, RentEscalationService
+from .services import (
+    InvoiceGenerationService, PaymentAllocationService, RentEscalationService,
+    # Payment reconciliation service
+    PaymentReconciliationService
+)
 from tenants.models import Tenant
 from leases.models import Lease
 from properties.models import Property
@@ -1327,3 +1336,300 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
             'vat_rate': vat_rate,
             'formatted': f'{vat_rate}%'
         })
+
+# New Payment API Views
+class PaymentReconciliationViewSet(viewsets.ViewSet):
+    """
+    ViewSet for payment reconciliation operations
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @action(detail=False, methods=['post'], url_path='import-csv')
+    def import_csv(self, request):
+        """
+        Import bank CSV for automatic payment reconciliation
+        """
+        try:
+            serializer = CSVImportRequestSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response({
+                    'success': False,
+                    'error': 'Invalid data provided',
+                    'details': serializer.errors
+                }, status=400)
+            
+            # Get CSV file and bank name
+            csv_file = request.FILES.get('csv_file')
+            bank_name = serializer.validated_data['bank_name']
+            
+            if not csv_file:
+                return Response({
+                    'success': False,
+                    'error': 'CSV file is required'
+                }, status=400)
+            
+            # Import CSV using service
+            service = PaymentReconciliationService()
+            result = service.import_bank_csv(csv_file, bank_name, request.user)
+            
+            if result['success']:
+                return Response(result, status=200)
+            else:
+                return Response(result, status=400)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'CSV import failed: {str(e)}'
+            }, status=500)
+    
+    @action(detail=False, methods=['post'], url_path='manual-payment')
+    def record_manual_payment(self, request):
+        """
+        Record manual payment entry
+        """
+        try:
+            serializer = ManualPaymentRequestSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response({
+                    'success': False,
+                    'error': 'Invalid data provided',
+                    'details': serializer.errors
+                }, status=400)
+            
+            # Record payment using service
+            service = PaymentReconciliationService()
+            result = service.record_manual_payment(
+                serializer.validated_data, 
+                request.user
+            )
+            
+            if result['success']:
+                return Response(result, status=201)
+            else:
+                return Response(result, status=400)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Payment recording failed: {str(e)}'
+            }, status=500)
+    
+    @action(detail=False, methods=['post'], url_path='allocate-payment')
+    def allocate_payment(self, request):
+        """
+        Manually allocate payment across invoices
+        """
+        try:
+            serializer = PaymentAllocationRequestSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response({
+                    'success': False,
+                    'error': 'Invalid data provided',
+                    'details': serializer.errors
+                }, status=400)
+            
+            # Allocate payment using service
+            service = PaymentReconciliationService()
+            result = service.allocate_payment_manually(
+                serializer.validated_data, 
+                request.user
+            )
+            
+            if result['success']:
+                return Response(result, status=200)
+            else:
+                return Response(result, status=400)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Payment allocation failed: {str(e)}'
+            }, status=500)
+    
+    @action(detail=False, methods=['post'], url_path='create-adjustment')
+    def create_adjustment(self, request):
+        """
+        Create manual adjustment/waiver
+        """
+        try:
+            serializer = AdjustmentRequestSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response({
+                    'success': False,
+                    'error': 'Invalid data provided',
+                    'details': serializer.errors
+                }, status=400)
+            
+            # Create adjustment using service
+            service = PaymentReconciliationService()
+            result = service.create_adjustment(
+                serializer.validated_data, 
+                request.user
+            )
+            
+            if result['success']:
+                return Response(result, status=201)
+            else:
+                return Response(result, status=400)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Adjustment creation failed: {str(e)}'
+            }, status=500)
+    
+    @action(detail=False, methods=['get'], url_path='tenant-statement/(?P<tenant_id>[^/.]+)')
+    def get_tenant_statement(self, request, tenant_id=None):
+        """
+        Get comprehensive tenant statement
+        """
+        try:
+            # Validate tenant ID
+            try:
+                tenant_id = int(tenant_id)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid tenant ID'
+                }, status=400)
+            
+            # Get date range from query params
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            
+            # Parse dates if provided
+            if start_date:
+                try:
+                    start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': 'Invalid start_date format. Use YYYY-MM-DD'
+                    }, status=400)
+            
+            if end_date:
+                try:
+                    end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response({
+                        'success': False,
+                        'error': 'Invalid end_date format. Use YYYY-MM-DD'
+                    }, status=400)
+            
+            # Get statement using service
+            service = PaymentReconciliationService()
+            result = service.get_tenant_statement(tenant_id, start_date, end_date)
+            
+            if result['success']:
+                return Response(result, status=200)
+            else:
+                return Response(result, status=400)
+                
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Statement generation failed: {str(e)}'
+            }, status=500)
+    
+    @action(detail=False, methods=['get'], url_path='unmatched-payments')
+    def get_unmatched_payments(self, request):
+        """
+        Get payments requiring manual allocation
+        """
+        try:
+            # Get unmatched bank transactions
+            unmatched_transactions = BankTransaction.objects.filter(
+                status='manual_review'
+            ).select_related('matched_lease__tenant', 'matched_lease__property')
+            
+            # Get pending manual payments
+            pending_payments = ManualPayment.objects.filter(
+                status='pending'
+            ).select_related('lease__tenant', 'lease__property')
+            
+            # Serialize data
+            transaction_serializer = BankTransactionSerializer(unmatched_transactions, many=True)
+            payment_serializer = ManualPaymentSerializer(pending_payments, many=True)
+            
+            return Response({
+                'success': True,
+                'unmatched_transactions': transaction_serializer.data,
+                'pending_payments': payment_serializer.data,
+                'total_unmatched': unmatched_transactions.count() + pending_payments.count()
+            }, status=200)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Failed to fetch unmatched payments: {str(e)}'
+            }, status=500)
+    
+    @action(detail=False, methods=['get'], url_path='payment-status/(?P<payment_id>[^/.]+)')
+    def get_payment_status(self, request, payment_id=None):
+        """
+        Get payment reconciliation status and allocation details
+        """
+        try:
+            # Validate payment ID
+            try:
+                payment_id = int(payment_id)
+            except ValueError:
+                return Response({
+                    'success': False,
+                    'error': 'Invalid payment ID'
+                }, status=400)
+            
+            # Try to find payment in different sources
+            payment = None
+            payment_type = None
+            
+            # Check manual payments
+            try:
+                payment = ManualPayment.objects.get(id=payment_id)
+                payment_type = 'manual_payment'
+            except ManualPayment.DoesNotExist:
+                pass
+            
+            # Check bank transactions
+            if not payment:
+                try:
+                    payment = BankTransaction.objects.get(id=payment_id)
+                    payment_type = 'bank_transaction'
+                except BankTransaction.DoesNotExist:
+                    pass
+            
+            if not payment:
+                return Response({
+                    'success': False,
+                    'error': 'Payment not found'
+                }, status=404)
+            
+            # Get allocation details
+            if payment_type == 'manual_payment':
+                allocations = PaymentAllocation.objects.filter(
+                    payment=payment
+                ).select_related('invoice')
+                serializer = ManualPaymentSerializer(payment)
+            else:
+                allocations = PaymentAllocation.objects.filter(
+                    bank_transaction=payment
+                ).select_related('invoice')
+                serializer = BankTransactionSerializer(payment)
+            
+            allocation_serializer = PaymentAllocationSerializer(allocations, many=True)
+            
+            return Response({
+                'success': True,
+                'payment': serializer.data,
+                'payment_type': payment_type,
+                'allocations': allocation_serializer.data,
+                'total_allocated': sum(alloc.allocated_amount for alloc in allocations),
+                'allocation_count': allocations.count()
+            }, status=200)
+            
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Failed to fetch payment status: {str(e)}'
+            }, status=500)

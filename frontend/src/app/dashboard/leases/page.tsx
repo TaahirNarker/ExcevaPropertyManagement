@@ -315,6 +315,41 @@ export default function LeasesDashboardPage() {
           )}
         </div>
 
+        {/* Quick Actions */}
+        <div className="bg-white/5 border border-white/20 rounded-lg p-6">
+          <h3 className="text-lg font-medium text-white mb-4">Quick Actions</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <button 
+              onClick={() => router.push('/dashboard/finance/master')}
+              className="flex flex-col items-center p-4 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              <PlusIcon className="h-8 w-8 text-blue-400 mb-2" />
+              <span className="text-sm text-white">Record Payment</span>
+            </button>
+            <button 
+              onClick={() => router.push('/dashboard/finance/master')}
+              className="flex flex-col items-center p-4 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              <DocumentTextIcon className="h-8 w-8 text-green-400 mb-2" />
+              <span className="text-sm text-white">Create Adjustment</span>
+            </button>
+            <button 
+              onClick={() => router.push('/dashboard/finance/master')}
+              className="flex flex-col items-center p-4 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              <BanknotesIcon className="h-8 w-8 text-orange-400 mb-2" />
+              <span className="text-sm text-white">Import Transactions</span>
+            </button>
+            <button 
+              onClick={() => router.push('/dashboard/finance/master')}
+              className="flex flex-col items-center p-4 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              <DocumentTextIcon className="h-8 w-8 text-indigo-400 mb-2" />
+              <span className="text-sm text-white">View Statements</span>
+            </button>
+          </div>
+        </div>
+
         {/* Results Summary */}
         <div className="flex items-center justify-between text-sm text-gray-400">
           <span>

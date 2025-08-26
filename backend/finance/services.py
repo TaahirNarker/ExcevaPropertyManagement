@@ -22,6 +22,11 @@ class InvoiceGenerationService:
     
     def __init__(self):
         self.vat_rate = SystemSettings.get_vat_rate()
+        self.stats = {
+            'invoices_created': 0,
+            'credits_applied': 0,
+            'total_credit_applied': Decimal('0.00')
+        }
     
     def generate_invoice_number(self) -> str:
         """
@@ -255,6 +260,119 @@ class InvoiceGenerationService:
             invoice.save()
             
             return invoice
+    
+    def generate_invoice(self, lease, billing_start, billing_end, invoice_type='regular', 
+                        user=None, apply_credits=True):
+        """
+        Generate invoice with automatic credit balance application.
+        
+        Args:
+            lease: Lease object
+            billing_start: Start date for billing period
+            billing_end: End date for billing period
+            invoice_type: Type of invoice ('regular', 'initial', 'adjustment')
+            user: User creating the invoice
+            apply_credits: Whether to automatically apply available credit balance
+        """
+        from .models import Invoice, InvoiceLineItem, TenantCreditBalance
+        
+        with transaction.atomic():
+            # Create invoice
+            invoice = Invoice.objects.create(
+                lease=lease,
+                property=lease.property,
+                tenant=lease.tenant,
+                landlord=lease.landlord,
+                issue_date=timezone.now().date(),
+                due_date=billing_end + timedelta(days=lease.payment_terms),
+                billing_start=billing_start,
+                billing_end=billing_end,
+                invoice_type=invoice_type,
+                created_by=user
+            )
+            
+            # Add base rent line item
+            InvoiceLineItem.objects.create(
+                invoice=invoice,
+                description=f"Rent for {billing_start.strftime('%B %Y')}",
+                quantity=1,
+                unit_price=lease.monthly_rent,
+                line_type='rent'
+            )
+            
+            # Add recurring charges
+            recurring_charges = RecurringCharge.objects.filter(
+                lease=lease,
+                is_active=True
+            )
+            
+            for charge in recurring_charges:
+                InvoiceLineItem.objects.create(
+                    invoice=invoice,
+                    description=charge.description,
+                    quantity=1,
+                    unit_price=charge.amount,
+                    line_type='recurring_charge'
+                )
+            
+            # Calculate totals
+            invoice.calculate_totals()
+            invoice.save()
+            
+            # Apply credit balance if requested and available
+            if apply_credits:
+                credit_applied = self._apply_credit_balance_to_invoice(invoice, user)
+                if credit_applied > 0:
+                    self.stats['credits_applied'] += 1
+                    self.stats['total_credit_applied'] += credit_applied
+            
+            self.stats['invoices_created'] += 1
+            return invoice
+    
+    def _apply_credit_balance_to_invoice(self, invoice, user):
+        """
+        Automatically apply available credit balance to invoice.
+        Returns the amount of credit applied.
+        """
+        from .models import TenantCreditBalance, InvoicePayment
+        from decimal import Decimal
+        
+        try:
+            credit_balance = TenantCreditBalance.objects.get(tenant=invoice.tenant)
+        except TenantCreditBalance.DoesNotExist:
+            return Decimal('0.00')
+        
+        if credit_balance.balance <= 0:
+            return Decimal('0.00')
+        
+        # Calculate how much credit to apply
+        credit_to_apply = min(credit_balance.balance, invoice.total_amount)
+        
+        if credit_to_apply > 0:
+            # Create payment record for credit application
+            InvoicePayment.objects.create(
+                invoice=invoice,
+                tenant=invoice.tenant,
+                amount=credit_to_apply,
+                allocated_amount=credit_to_apply,
+                payment_date=timezone.now().date(),
+                payment_method='credit_balance',
+                reference_number=f"CREDIT-{timezone.now().strftime('%Y%m%d%H%M%S')}",
+                notes=f"Automatic credit balance application to invoice {invoice.invoice_number}",
+                recorded_by=user
+            )
+            
+            # Reduce credit balance
+            credit_balance.balance -= credit_to_apply
+            credit_balance.save()
+            
+            # Update invoice totals
+            invoice.calculate_totals()
+            invoice.save()
+            
+            return credit_to_apply
+        
+        return Decimal('0.00')
     
     def get_or_create_invoice_draft(self, lease: Lease, billing_month: date) -> Dict:
         """
@@ -595,3 +713,746 @@ class RentEscalationService:
             }
             for log in escalations
         ]
+
+
+class PaymentReconciliationService:
+    """
+    Service for handling payment reconciliation including CSV import and manual allocation
+    """
+    
+    def __init__(self):
+        import logging
+        self.logger = logging.getLogger(__name__)
+    
+    def import_bank_csv(self, csv_file, bank_name, imported_by):
+        """
+        Import bank CSV and attempt automatic reconciliation
+        
+        Args:
+            csv_file: Uploaded CSV file
+            bank_name: Name of the bank
+            imported_by: User performing the import
+            
+        Returns:
+            dict: Import results and statistics
+        """
+        try:
+            # Generate unique batch ID
+            batch_id = f"CSV_{bank_name}_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Create import batch record
+            from .models import CSVImportBatch
+            import_batch = CSVImportBatch.objects.create(
+                batch_id=batch_id,
+                filename=csv_file.name,
+                bank_name=bank_name,
+                imported_by=imported_by,
+                status='processing'
+            )
+            
+            # Parse CSV file
+            transactions = self._parse_csv_file(csv_file)
+            
+            # Process each transaction
+            successful_reconciliations = 0
+            manual_review_required = 0
+            failed_transactions = 0
+            
+            for transaction_data in transactions:
+                try:
+                    # Create bank transaction record
+                    from .models import BankTransaction
+                    bank_transaction = BankTransaction.objects.create(
+                        import_batch=batch_id,
+                        transaction_date=transaction_data['date'],
+                        description=transaction_data['description'],
+                        amount=transaction_data['amount'],
+                        transaction_type=transaction_data['type'],
+                        reference_number=transaction_data.get('reference', ''),
+                        bank_account=transaction_data.get('account', ''),
+                        tenant_reference=self._extract_tenant_reference(transaction_data['description'])
+                    )
+                    
+                    # Attempt automatic reconciliation
+                    reconciliation_result = self._attempt_automatic_reconciliation(bank_transaction)
+                    
+                    if reconciliation_result['status'] == 'reconciled':
+                        successful_reconciliations += 1
+                        bank_transaction.status = 'reconciled'
+                    elif reconciliation_result['status'] == 'manual_review':
+                        manual_review_required += 1
+                        bank_transaction.status = 'manual_review'
+                    else:
+                        failed_transactions += 1
+                        bank_transaction.status = 'failed'
+                    
+                    bank_transaction.save()
+                    
+                except Exception as e:
+                    failed_transactions += 1
+                    self.logger.error(f"Failed to process transaction: {e}")
+                    continue
+            
+            # Update import batch status
+            import_batch.total_transactions = len(transactions)
+            import_batch.successful_reconciliations = successful_reconciliations
+            import_batch.manual_review_required = manual_review_required
+            import_batch.failed_transactions = failed_transactions
+            import_batch.status = 'completed' if failed_transactions == 0 else 'partial'
+            import_batch.save()
+            
+            return {
+                'success': True,
+                'batch_id': batch_id,
+                'total_transactions': len(transactions),
+                'successful_reconciliations': successful_reconciliations,
+                'manual_review_required': manual_review_required,
+                'failed_transactions': failed_transactions
+            }
+            
+        except Exception as e:
+            self.logger.error(f"CSV import failed: {e}")
+            if 'import_batch' in locals():
+                import_batch.status = 'failed'
+                import_batch.error_log = str(e)
+                import_batch.save()
+            
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _parse_csv_file(self, csv_file):
+        """
+        Parse CSV file and extract transaction data
+        
+        Expected CSV format:
+        Date,Description,Amount,Type,Reference,Account
+        """
+        import csv
+        import io
+        from datetime import datetime
+        
+        transactions = []
+        
+        # Read CSV content
+        content = csv_file.read().decode('utf-8')
+        csv_file.seek(0)  # Reset file pointer
+        
+        # Parse CSV
+        reader = csv.DictReader(io.StringIO(content))
+        
+        for row in reader:
+            try:
+                # Parse amount (handle negative/positive for credits/debits)
+                amount_str = row.get('Amount', '0').replace(',', '').replace('R', '').strip()
+                amount = abs(float(amount_str))
+                
+                # Determine transaction type
+                if amount_str.startswith('-') or float(amount_str) < 0:
+                    transaction_type = 'debit'
+                else:
+                    transaction_type = 'credit'
+                
+                transactions.append({
+                    'date': datetime.strptime(row['Date'], '%Y-%m-%d').date(),
+                    'description': row.get('Description', ''),
+                    'amount': amount,
+                    'type': transaction_type,
+                    'reference': row.get('Reference', ''),
+                    'account': row.get('Account', '')
+                })
+                
+            except Exception as e:
+                self.logger.warning(f"Failed to parse CSV row: {row}, error: {e}")
+                continue
+        
+        return transactions
+    
+    def _extract_tenant_reference(self, description):
+        """
+        Extract tenant reference from transaction description
+        This is a simple implementation - can be enhanced with regex patterns
+        """
+        # Common patterns for tenant references
+        import re
+        
+        # Look for patterns like "TENANT123", "T-123", "Tenant Name"
+        patterns = [
+            r'[Tt]enant\s+(\w+)',  # "Tenant Smith"
+            r'[Tt]enant\s*[-_]\s*(\w+)',  # "Tenant-Smith"
+            r'(\w+)\s*[-_]\s*[Rr]ent',  # "Smith-Rent"
+            r'(\w+)\s*[-_]\s*[Pp]ayment',  # "Smith-Payment"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, description)
+            if match:
+                return match.group(1)
+        
+        return ''
+    
+    def _attempt_automatic_reconciliation(self, bank_transaction):
+        """
+        Attempt automatic reconciliation of bank transaction
+        
+        Returns:
+            dict: Reconciliation result
+        """
+        try:
+            # Skip if no tenant reference
+            if not bank_transaction.tenant_reference:
+                return {'status': 'manual_review', 'reason': 'No tenant reference found'}
+            
+            # Find matching lease by tenant reference
+            lease = self._find_lease_by_reference(bank_transaction.tenant_reference)
+            if not lease:
+                return {'status': 'manual_review', 'reason': 'No matching lease found'}
+            
+            # Find outstanding invoices for this lease
+            outstanding_invoices = self._get_outstanding_invoices(lease)
+            if not outstanding_invoices:
+                return {'status': 'manual_review', 'reason': 'No outstanding invoices found'}
+            
+            # Sort invoices by due date (oldest first)
+            outstanding_invoices = sorted(outstanding_invoices, key=lambda x: x.due_date)
+            
+            # Check for exact match
+            exact_match = self._find_exact_match(bank_transaction, outstanding_invoices)
+            if exact_match:
+                return self._reconcile_exact_match(bank_transaction, exact_match, lease)
+            
+            # Check for partial payment
+            if bank_transaction.amount < sum(inv.balance_due for inv in outstanding_invoices):
+                return self._reconcile_partial_payment(bank_transaction, outstanding_invoices, lease)
+            
+            # Check for overpayment
+            if bank_transaction.amount > sum(inv.balance_due for inv in outstanding_invoices):
+                return self._reconcile_overpayment(bank_transaction, outstanding_invoices, lease)
+            
+            return {'status': 'manual_review', 'reason': 'Unable to determine payment type'}
+            
+        except Exception as e:
+            self.logger.error(f"Automatic reconciliation failed: {e}")
+            return {'status': 'failed', 'reason': str(e)}
+    
+    def _find_lease_by_reference(self, tenant_reference):
+        """Find lease by tenant reference"""
+        from leases.models import Lease
+        
+        # Try to find by tenant name or code
+        try:
+            # First try exact match on tenant code
+            lease = Lease.objects.filter(
+                tenant__tenant_code__iexact=tenant_reference,
+                status='active'
+            ).first()
+            
+            if lease:
+                return lease
+            
+            # Try partial match on tenant name
+            lease = Lease.objects.filter(
+                tenant__name__icontains=tenant_reference,
+                status='active'
+            ).first()
+            
+            return lease
+            
+        except Exception as e:
+            self.logger.error(f"Error finding lease: {e}")
+            return None
+    
+    def _get_outstanding_invoices(self, lease):
+        """Get outstanding invoices for a lease"""
+        from .models import Invoice
+        return Invoice.objects.filter(
+            lease=lease,
+            status__in=['sent', 'overdue', 'partially_paid'],
+            balance_due__gt=0
+        ).order_by('due_date')
+    
+    def _find_exact_match(self, bank_transaction, outstanding_invoices):
+        """Find exact amount match"""
+        for invoice in outstanding_invoices:
+            if abs(bank_transaction.amount - invoice.balance_due) < 0.01:  # Allow for rounding
+                return invoice
+        return None
+    
+    def _reconcile_exact_match(self, bank_transaction, invoice, lease):
+        """Reconcile exact amount match"""
+        try:
+            # Create payment allocation
+            from .models import PaymentAllocation
+            PaymentAllocation.objects.create(
+                bank_transaction=bank_transaction,
+                invoice=invoice,
+                allocated_amount=bank_transaction.amount,
+                allocation_type='csv_import',
+                notes='Automatic reconciliation via CSV import'
+            )
+            
+            # Update invoice
+            invoice.amount_paid += bank_transaction.amount
+            invoice.balance_due = 0
+            invoice.status = 'paid'
+            invoice.save()
+            
+            # Update bank transaction
+            bank_transaction.matched_lease = lease
+            bank_transaction.matched_invoice = invoice
+            bank_transaction.status = 'reconciled'
+            bank_transaction.save()
+            
+            return {'status': 'reconciled', 'invoice_id': invoice.id}
+            
+        except Exception as e:
+            self.logger.error(f"Exact match reconciliation failed: {e}")
+            return {'status': 'failed', 'reason': str(e)}
+    
+    def _reconcile_partial_payment(self, bank_transaction, outstanding_invoices, lease):
+        """Reconcile partial payment and create underpayment alert"""
+        try:
+            # Find the oldest outstanding invoice
+            oldest_invoice = min(outstanding_invoices, key=lambda inv: inv.due_date)
+            
+            # Calculate shortfall
+            shortfall = oldest_invoice.balance_due - bank_transaction.amount
+            
+            # Create payment allocation
+            from .models import PaymentAllocation
+            PaymentAllocation.objects.create(
+                bank_transaction=bank_transaction,
+                invoice=oldest_invoice,
+                allocated_amount=bank_transaction.amount,
+                allocation_type='csv_import',
+                notes='Partial payment allocation'
+            )
+            
+            # Update invoice
+            oldest_invoice.amount_paid += bank_transaction.amount
+            oldest_invoice.balance_due = shortfall
+            oldest_invoice.status = 'partially_paid'
+            oldest_invoice.save()
+            
+            # Create underpayment alert
+            from .models import UnderpaymentAlert
+            UnderpaymentAlert.objects.create(
+                tenant=lease.tenant,
+                invoice=oldest_invoice,
+                bank_transaction=bank_transaction,
+                expected_amount=oldest_invoice.total_amount,
+                actual_amount=bank_transaction.amount,
+                shortfall_amount=shortfall,
+                alert_message=f"Underpayment detected: Expected R{oldest_invoice.total_amount}, received R{bank_transaction.amount}. Shortfall: R{shortfall}"
+            )
+            
+            # Update bank transaction
+            bank_transaction.matched_lease = lease
+            bank_transaction.status = 'reconciled'
+            bank_transaction.save()
+            
+            return {'status': 'reconciled', 'partial': True, 'shortfall': float(shortfall)}
+            
+        except Exception as e:
+            return {'status': 'failed', 'reason': str(e)}
+    
+    def _reconcile_overpayment(self, bank_transaction, outstanding_invoices, lease):
+        """Reconcile overpayment (create credit for next invoice)"""
+        try:
+            # Allocate to all outstanding invoices
+            total_outstanding = sum(inv.balance_due for inv in outstanding_invoices)
+            overpayment_amount = bank_transaction.amount - total_outstanding
+            
+            # Allocate to invoices
+            for invoice in outstanding_invoices:
+                from .models import PaymentAllocation
+                PaymentAllocation.objects.create(
+                    bank_transaction=bank_transaction,
+                    invoice=invoice,
+                    allocated_amount=invoice.balance_due,
+                    allocation_type='csv_import',
+                    notes='Full payment allocation'
+                )
+                
+                # Mark invoice as paid
+                invoice.amount_paid += invoice.balance_due
+                invoice.balance_due = 0
+                invoice.status = 'paid'
+                invoice.save()
+            
+            # Create credit adjustment for overpayment
+            if overpayment_amount > 0:
+                # Find the most recent invoice to attach credit to
+                latest_invoice = outstanding_invoices[-1]
+                
+                from .models import Adjustment
+                Adjustment.objects.create(
+                    invoice=latest_invoice,
+                    adjustment_type='credit',
+                    amount=-overpayment_amount,  # Negative for credit
+                    reason='Overpayment credit from bank reconciliation',
+                    notes=f'Credit of R{overpayment_amount} available for next invoice',
+                    effective_date=timezone.now().date()
+                )
+            
+            # Update bank transaction
+            bank_transaction.matched_lease = lease
+            bank_transaction.status = 'reconciled'
+            bank_transaction.save()
+            
+            return {'status': 'reconciled', 'overpayment': True, 'credit_amount': overpayment_amount}
+            
+        except Exception as e:
+            self.logger.error(f"Overpayment reconciliation failed: {e}")
+            return {'status': 'failed', 'reason': str(e)}
+    
+    def record_manual_payment(self, payment_data, recorded_by):
+        """
+        Record manual payment entry
+        
+        Args:
+            payment_data: Payment information
+            recorded_by: User recording the payment
+            
+        Returns:
+            dict: Payment record and status
+        """
+        try:
+            from leases.models import Lease
+            from .models import ManualPayment
+            
+            # Get lease
+            lease = Lease.objects.get(id=payment_data['lease_id'])
+            
+            # Create manual payment record
+            payment = ManualPayment.objects.create(
+                lease=lease,
+                payment_method=payment_data['payment_method'],
+                amount=payment_data['amount'],
+                payment_date=payment_data['payment_date'],
+                reference_number=payment_data.get('reference_number', ''),
+                notes=payment_data.get('notes', ''),
+                recorded_by=recorded_by
+            )
+            
+            return {
+                'success': True,
+                'payment_id': payment.id,
+                'status': 'pending_allocation',
+                'message': 'Payment recorded successfully. Manual allocation required.'
+            }
+            
+        except Lease.DoesNotExist:
+            return {
+                'success': False,
+                'error': 'Lease not found'
+            }
+        except Exception as e:
+            self.logger.error(f"Manual payment recording failed: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def allocate_payment_manually(self, allocation_data, allocated_by):
+        """
+        Manually allocate payment across invoices
+        
+        Args:
+            allocation_data: Allocation information
+            allocated_by: User performing allocation
+            
+        Returns:
+            dict: Allocation results
+        """
+        try:
+            # Get payment source
+            if allocation_data.get('payment_id'):
+                from .models import ManualPayment
+                payment_source = ManualPayment.objects.get(id=allocation_data['payment_id'])
+                source_type = 'payment'
+            elif allocation_data.get('bank_transaction_id'):
+                from .models import BankTransaction
+                payment_source = BankTransaction.objects.get(id=allocation_data['bank_transaction_id'])
+                source_type = 'bank_transaction'
+            else:
+                return {'success': False, 'error': 'No payment source specified'}
+            
+            # Process allocations
+            total_allocated = 0
+            allocations_created = []
+            
+            for allocation in allocation_data['allocations']:
+                from .models import Invoice, PaymentAllocation
+                invoice = Invoice.objects.get(id=allocation['invoice_id'])
+                amount = allocation['amount']
+                
+                # Create payment allocation
+                payment_allocation = PaymentAllocation.objects.create(
+                    payment=payment_source if source_type == 'payment' else None,
+                    bank_transaction=payment_source if source_type == 'bank_transaction' else None,
+                    invoice=invoice,
+                    allocated_amount=amount,
+                    allocation_type='manual',
+                    notes=allocation.get('notes', ''),
+                    allocated_by=allocated_by
+                )
+                
+                # Update invoice
+                invoice.amount_paid += amount
+                invoice.balance_due = invoice.total_amount - invoice.amount_paid
+                
+                if invoice.balance_due <= 0:
+                    invoice.status = 'paid'
+                else:
+                    invoice.status = 'partially_paid'
+                
+                invoice.save()
+                
+                allocations_created.append(payment_allocation)
+                total_allocated += amount
+            
+            # Update payment source status
+            if source_type == 'payment':
+                payment_source.allocated_amount = total_allocated
+                payment_source.remaining_amount = payment_source.amount - total_allocated
+                
+                if payment_source.remaining_amount <= 0:
+                    payment_source.status = 'allocated'
+                else:
+                    payment_source.status = 'partially_allocated'
+                
+                payment_source.save()
+            
+            elif source_type == 'bank_transaction':
+                payment_source.manually_allocated = True
+                payment_source.allocation_notes = allocation_data.get('notes', '')
+                payment_source.save()
+            
+            return {
+                'success': True,
+                'total_allocated': total_allocated,
+                'allocations_created': len(allocations_created),
+                'message': 'Payment allocated successfully'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Manual payment allocation failed: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def create_adjustment(self, adjustment_data, applied_by):
+        """
+        Create manual adjustment/waiver
+        
+        Args:
+            adjustment_data: Adjustment information
+            applied_by: User applying adjustment
+            
+        Returns:
+            dict: Adjustment result
+        """
+        try:
+            from .models import Invoice, Adjustment
+            invoice = Invoice.objects.get(id=adjustment_data['invoice_id'])
+            
+            # Create adjustment
+            adjustment = Adjustment.objects.create(
+                invoice=invoice,
+                adjustment_type=adjustment_data['adjustment_type'],
+                amount=adjustment_data['amount'],
+                reason=adjustment_data['reason'],
+                notes=adjustment_data.get('notes', ''),
+                effective_date=adjustment_data['effective_date'],
+                applied_by=applied_by
+            )
+            
+            # Update invoice totals
+            invoice.subtotal += adjustment.amount
+            invoice.total_amount = invoice.subtotal + invoice.tax_amount
+            invoice.balance_due = invoice.total_amount - invoice.amount_paid
+            invoice.save()
+            
+            return {
+                'success': True,
+                'adjustment_id': adjustment.id,
+                'new_invoice_total': float(invoice.total_amount),
+                'new_balance_due': float(invoice.balance_due),
+                'message': 'Adjustment created successfully'
+            }
+            
+        except Invoice.DoesNotExist:
+            return {
+                'success': False,
+                'error': 'Invoice not found'
+            }
+        except Exception as e:
+            self.logger.error(f"Adjustment creation failed: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def get_tenant_statement(self, tenant_id, start_date=None, end_date=None):
+        """
+        Generate comprehensive tenant statement
+        
+        Args:
+            tenant_id: Tenant ID
+            start_date: Start date for statement period
+            end_date: End date for statement period
+            
+        Returns:
+            dict: Complete tenant statement
+        """
+        try:
+            from tenants.models import Tenant
+            from leases.models import Lease
+            from .models import Invoice, ManualPayment, Adjustment
+            
+            tenant = Tenant.objects.get(id=tenant_id)
+            
+            # Get active lease
+            lease = Lease.objects.filter(tenant=tenant, status='active').first()
+            if not lease:
+                return {'success': False, 'error': 'No active lease found for tenant'}
+            
+            # Set default date range if not provided
+            if not start_date:
+                start_date = timezone.now().date().replace(day=1)
+            if not end_date:
+                end_date = timezone.now().date()
+            
+            # Get invoices for period
+            invoices = Invoice.objects.filter(
+                lease=lease,
+                issue_date__gte=start_date,
+                issue_date__lte=end_date
+            ).order_by('issue_date')
+            
+            # Get payments for period
+            payments = ManualPayment.objects.filter(
+                lease=lease,
+                payment_date__gte=start_date,
+                payment_date__lte=end_date
+            ).order_by('payment_date')
+            
+            # Get adjustments for period
+            adjustments = Adjustment.objects.filter(
+                invoice__lease=lease,
+                effective_date__gte=start_date,
+                effective_date__lte=end_date
+            ).order_by('effective_date')
+            
+            # Calculate summary
+            total_charges = sum(inv.total_amount for inv in invoices)
+            total_payments = sum(pay.amount for pay in payments)
+            total_adjustments = sum(adj.amount for adj in adjustments)
+            
+            # Get outstanding invoices
+            outstanding_invoices = Invoice.objects.filter(
+                lease=lease,
+                status__in=['sent', 'overdue', 'partially_paid'],
+                balance_due__gt=0
+            ).order_by('due_date')
+            
+            overdue_amount = sum(inv.balance_due for inv in outstanding_invoices if inv.due_date < timezone.now().date())
+            
+            # Build transaction history
+            transactions = []
+            
+            # Add invoices
+            for invoice in invoices:
+                transactions.append({
+                    'date': invoice.issue_date,
+                    'type': 'invoice',
+                    'description': f"{invoice.title or 'Invoice'} - {invoice.invoice_number}",
+                    'reference': invoice.invoice_number,
+                    'charges': float(invoice.total_amount),
+                    'payments': 0,
+                    'adjustments': 0,
+                    'balance': float(invoice.balance_due)
+                })
+            
+            # Add payments
+            for payment in payments:
+                transactions.append({
+                    'date': payment.payment_date,
+                    'type': 'payment',
+                    'description': f"Payment - {payment.payment_method}",
+                    'reference': payment.reference_number or f"PAY-{payment.id}",
+                    'charges': 0,
+                    'payments': float(payment.amount),
+                    'adjustments': 0,
+                    'balance': 0  # Will be calculated
+                })
+            
+            # Add adjustments
+            for adjustment in adjustments:
+                transactions.append({
+                    'date': adjustment.effective_date,
+                    'type': 'adjustment',
+                    'description': f"{adjustment.get_adjustment_type_display()} - {adjustment.reason}",
+                    'reference': f"ADJ-{adjustment.id}",
+                    'charges': 0,
+                    'payments': 0,
+                    'adjustments': float(adjustment.amount),
+                    'balance': 0  # Will be calculated
+                })
+            
+            # Sort transactions by date
+            transactions.sort(key=lambda x: x['date'])
+            
+            # Calculate running balance
+            balance = 0
+            for transaction in transactions:
+                balance += transaction['charges'] - transaction['payments'] + transaction['adjustments']
+                transaction['balance'] = balance
+            
+            return {
+                'success': True,
+                'tenant': {
+                    'id': tenant.id,
+                    'name': tenant.name,
+                    'email': tenant.email
+                },
+                'lease': {
+                    'id': lease.id,
+                    'unit': lease.property.unit_number if lease.property else 'N/A',
+                    'monthly_rent': float(lease.monthly_rent)
+                },
+                'statement_period': {
+                    'start_date': start_date,
+                    'end_date': end_date,
+                    'generated_date': timezone.now()
+                },
+                'summary': {
+                    'opening_balance': 0,  # Could be enhanced to track previous balance
+                    'total_charges': total_charges,
+                    'total_payments': total_payments,
+                    'total_adjustments': total_adjustments,
+                    'closing_balance': balance,
+                    'credit_balance': max(0, -balance) if balance < 0 else 0,
+                    'overdue_amount': overdue_amount
+                },
+                'transactions': transactions,
+                'outstanding_invoices': [
+                    {
+                        'invoice_id': inv.id,
+                        'invoice_number': inv.invoice_number,
+                        'due_date': inv.due_date,
+                        'amount': float(inv.balance_due),
+                        'days_overdue': (timezone.now().date() - inv.due_date).days if inv.due_date < timezone.now().date() else 0
+                    }
+                    for inv in outstanding_invoices
+                ]
+            }
+            
+        except Tenant.DoesNotExist:
+            return {'success': False, 'error': 'Tenant not found'}
+        except Exception as e:
+            self.logger.error(f"Tenant statement generation failed: {e}")
+            return {'success': False, 'error': str(e)}

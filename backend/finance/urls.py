@@ -3,7 +3,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     InvoiceViewSet, InvoiceTemplateViewSet, InvoicePaymentViewSet, 
     InvoiceLineItemViewSet, InvoiceAuditLogViewSet, FinanceAPIViewSet,
-    PaymentAllocationViewSet, RecurringChargeViewSet, RentEscalationViewSet, SystemSettingsViewSet
+    PaymentAllocationViewSet, RecurringChargeViewSet, RentEscalationViewSet, SystemSettingsViewSet,
+    PaymentReconciliationViewSet
 )
 
 # Create router and register viewsets
@@ -17,6 +18,7 @@ router.register(r'payment-allocation', PaymentAllocationViewSet, basename='payme
 router.register(r'recurring-charges', RecurringChargeViewSet, basename='recurring-charge')
 router.register(r'rent-escalation', RentEscalationViewSet, basename='rent-escalation')
 router.register(r'system-settings', SystemSettingsViewSet, basename='system-settings')
+router.register(r'payment-reconciliation', PaymentReconciliationViewSet, basename='payment-reconciliation')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -28,4 +30,13 @@ urlpatterns = [
     path('landlord-payments/', FinanceAPIViewSet.as_view({'get': 'landlord_payments'}), name='finance-landlord-payments'),
     path('supplier-payments/', FinanceAPIViewSet.as_view({'get': 'supplier_payments'}), name='finance-supplier-payments'),
     path('bank-transactions/', FinanceAPIViewSet.as_view({'get': 'bank_transactions'}), name='finance-bank-transactions'),
+    
+    # New Payment Reconciliation endpoints
+    path('import-csv/', PaymentReconciliationViewSet.as_view({'post': 'import_csv'}), name='import-csv'),
+    path('manual-payment/', PaymentReconciliationViewSet.as_view({'post': 'record_manual_payment'}), name='manual-payment'),
+    path('allocate-payment/', PaymentReconciliationViewSet.as_view({'post': 'allocate_payment'}), name='allocate-payment'),
+    path('create-adjustment/', PaymentReconciliationViewSet.as_view({'post': 'create_adjustment'}), name='create-adjustment'),
+    path('tenant-statement/<int:tenant_id>/', PaymentReconciliationViewSet.as_view({'get': 'get_tenant_statement'}), name='tenant-statement'),
+    path('unmatched-payments/', PaymentReconciliationViewSet.as_view({'get': 'get_unmatched_payments'}), name='unmatched-payments'),
+    path('payment-status/<int:payment_id>/', PaymentReconciliationViewSet.as_view({'get': 'get_payment_status'}), name='payment-status'),
 ] 

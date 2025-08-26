@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from .models import (
     Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog,
-    TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings
+    TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings,
+    BankTransaction, ManualPayment, PaymentAllocation, Adjustment, CSVImportBatch
 )
 from tenants.models import Tenant
 from leases.models import Lease
@@ -355,4 +356,224 @@ class InvoiceNavigationSerializer(serializers.Serializer):
         """Ensure billing month is the first day of the month"""
         if value.day != 1:
             return value.replace(day=1)
-        return value 
+        return value
+
+
+# New Payment Model Serializers
+class BankTransactionSerializer(serializers.ModelSerializer):
+    """Serializer for bank transactions"""
+    
+    tenant_name = serializers.CharField(source='matched_lease.tenant.name', read_only=True)
+    property_name = serializers.CharField(source='matched_lease.property.name', read_only=True)
+    invoice_number = serializers.CharField(source='matched_invoice.invoice_number', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    transaction_type_display = serializers.CharField(source='get_transaction_type_display', read_only=True)
+    
+    class Meta:
+        model = BankTransaction
+        fields = [
+            'id', 'import_batch', 'import_date', 'transaction_date', 'description',
+            'amount', 'transaction_type', 'transaction_type_display', 'reference_number',
+            'bank_account', 'status', 'status_display', 'tenant_reference',
+            'matched_lease', 'matched_invoice', 'tenant_name', 'property_name',
+            'invoice_number', 'manually_allocated', 'allocation_notes',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'import_batch', 'import_date', 'tenant_name', 'property_name',
+            'invoice_number', 'status_display', 'transaction_type_display',
+            'created_at', 'updated_at'
+        ]
+
+
+class ManualPaymentSerializer(serializers.ModelSerializer):
+    """Serializer for manual payments"""
+    
+    tenant_name = serializers.CharField(source='lease.tenant.name', read_only=True)
+    property_name = serializers.CharField(source='lease.property.name', read_only=True)
+    unit_number = serializers.CharField(source='lease.property.unit_number', read_only=True)
+    payment_method_display = serializers.CharField(source='get_payment_method_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    recorded_by_name = serializers.CharField(source='recorded_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = ManualPayment
+        fields = [
+            'id', 'lease', 'tenant_name', 'property_name', 'unit_number',
+            'payment_method', 'payment_method_display', 'amount', 'payment_date',
+            'reference_number', 'notes', 'status', 'status_display',
+            'allocated_amount', 'remaining_amount', 'recorded_by', 'recorded_by_name',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'tenant_name', 'property_name', 'unit_number',
+            'payment_method_display', 'status_display', 'recorded_by_name',
+            'allocated_amount', 'remaining_amount', 'created_at', 'updated_at'
+        ]
+
+
+class PaymentAllocationSerializer(serializers.ModelSerializer):
+    """Serializer for payment allocations"""
+    
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    tenant_name = serializers.CharField(source='invoice.tenant.name', read_only=True)
+    allocation_type_display = serializers.CharField(source='get_allocation_type_display', read_only=True)
+    allocated_by_name = serializers.CharField(source='allocated_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = PaymentAllocation
+        fields = [
+            'id', 'payment', 'bank_transaction', 'invoice', 'invoice_number',
+            'tenant_name', 'allocated_amount', 'allocation_type',
+            'allocation_type_display', 'allocation_date', 'notes',
+            'allocated_by', 'allocated_by_name', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'invoice_number', 'tenant_name', 'allocation_type_display',
+            'allocation_date', 'allocated_by_name', 'created_at', 'updated_at'
+        ]
+
+
+class AdjustmentSerializer(serializers.ModelSerializer):
+    """Serializer for adjustments"""
+    
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    tenant_name = serializers.CharField(source='invoice.tenant.name', read_only=True)
+    adjustment_type_display = serializers.CharField(source='get_adjustment_type_display', read_only=True)
+    applied_by_name = serializers.CharField(source='applied_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = Adjustment
+        fields = [
+            'id', 'invoice', 'invoice_number', 'tenant_name', 'adjustment_type',
+            'adjustment_type_display', 'amount', 'reason', 'notes',
+            'is_approved', 'applied_date', 'effective_date', 'applied_by',
+            'applied_by_name', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'invoice_number', 'tenant_name', 'adjustment_type_display',
+            'applied_date', 'applied_by_name', 'created_at', 'updated_at'
+        ]
+
+
+class CSVImportBatchSerializer(serializers.ModelSerializer):
+    """Serializer for CSV import batches"""
+    
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    imported_by_name = serializers.CharField(source='imported_by.get_full_name', read_only=True)
+    
+    class Meta:
+        model = CSVImportBatch
+        fields = [
+            'id', 'batch_id', 'filename', 'bank_name', 'import_date',
+            'status', 'status_display', 'total_transactions',
+            'successful_reconciliations', 'manual_review_required',
+            'failed_transactions', 'error_log', 'imported_by', 'imported_by_name',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'batch_id', 'import_date', 'status_display',
+            'imported_by_name', 'created_at', 'updated_at'
+        ]
+
+
+class CSVImportRequestSerializer(serializers.Serializer):
+    """Serializer for CSV import requests"""
+    
+    bank_name = serializers.CharField(max_length=100)
+    csv_file = serializers.FileField()
+    
+    def validate_bank_name(self, value):
+        """Validate bank name"""
+        if not value.strip():
+            raise serializers.ValidationError("Bank name is required")
+        return value.strip()
+
+
+class ManualPaymentRequestSerializer(serializers.Serializer):
+    """Serializer for manual payment requests"""
+    
+    lease_id = serializers.IntegerField()
+    payment_method = serializers.CharField(max_length=20)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    payment_date = serializers.DateField()
+    reference_number = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate_payment_method(self, value):
+        """Validate payment method"""
+        valid_methods = [choice[0] for choice in ManualPayment.PAYMENT_METHOD_CHOICES]
+        if value not in valid_methods:
+            raise serializers.ValidationError(f"Invalid payment method. Choose from: {valid_methods}")
+        return value
+
+
+class PaymentAllocationRequestSerializer(serializers.Serializer):
+    """Serializer for payment allocation requests"""
+    
+    payment_id = serializers.IntegerField(required=False)
+    bank_transaction_id = serializers.IntegerField(required=False)
+    allocations = serializers.ListField(
+        child=serializers.DictField(),
+        min_length=1
+    )
+    create_credit = serializers.BooleanField(default=False)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate(self, data):
+        """Validate that either payment_id or bank_transaction_id is provided"""
+        if not data.get('payment_id') and not data.get('bank_transaction_id'):
+            raise serializers.ValidationError("Either payment_id or bank_transaction_id must be provided")
+        
+        if data.get('payment_id') and data.get('bank_transaction_id'):
+            raise serializers.ValidationError("Only one of payment_id or bank_transaction_id can be provided")
+        
+        return data
+    
+    def validate_allocations(self, value):
+        """Validate allocation structure"""
+        for allocation in value:
+            if 'invoice_id' not in allocation or 'amount' not in allocation:
+                raise serializers.ValidationError("Each allocation must have invoice_id and amount")
+            
+            try:
+                amount = float(allocation['amount'])
+                if amount <= 0:
+                    raise serializers.ValidationError("Allocation amount must be positive")
+            except (ValueError, TypeError):
+                raise serializers.ValidationError("Allocation amount must be a valid number")
+        
+        return value
+
+
+class AdjustmentRequestSerializer(serializers.Serializer):
+    """Serializer for adjustment requests"""
+    
+    invoice_id = serializers.IntegerField()
+    adjustment_type = serializers.CharField(max_length=20)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    reason = serializers.CharField(max_length=255)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    effective_date = serializers.DateField()
+    
+    def validate_adjustment_type(self, value):
+        """Validate adjustment type"""
+        valid_types = [choice[0] for choice in Adjustment.ADJUSTMENT_TYPE_CHOICES]
+        if value not in valid_types:
+            raise serializers.ValidationError(f"Invalid adjustment type. Choose from: {valid_types}")
+        return value
+
+
+class TenantStatementSerializer(serializers.Serializer):
+    """Serializer for tenant statement requests"""
+    
+    tenant_id = serializers.IntegerField()
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
+    
+    def validate(self, data):
+        """Validate date range"""
+        if data.get('start_date') and data.get('end_date'):
+            if data['start_date'] > data['end_date']:
+                raise serializers.ValidationError("Start date must be before end date")
+        return data 

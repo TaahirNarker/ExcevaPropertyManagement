@@ -4,7 +4,11 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { financeApi } from '@/lib/api';
+import { financeApi, leaseApi } from '@/lib/api';
+import CSVImportModal from '@/components/CSVImportModal';
+import ManualPaymentModal from '@/components/ManualPaymentModal';
+import PaymentAllocationModal from '@/components/PaymentAllocationModal';
+import AdjustmentModal from '@/components/AdjustmentModal';
 import {
   generateFinancialOverviewPDF,
   generateIncomeReportPDF,
@@ -144,6 +148,13 @@ export default function MasterFinancePage() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   
+  // Payment modal state
+  const [showCSVImportModal, setShowCSVImportModal] = useState(false);
+  const [showManualPaymentModal, setShowManualPaymentModal] = useState(false);
+  const [showPaymentAllocationModal, setShowPaymentAllocationModal] = useState(false);
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [leases, setLeases] = useState<any[]>([]);
+  
   // Dropdown state management
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
@@ -183,6 +194,15 @@ export default function MasterFinancePage() {
       // Fetch bank transactions
       const transactions = await financeApi.getBankTransactions();
       setBankTransactions(Array.isArray(transactions) ? transactions : []);
+      
+      // Fetch leases for payment modals
+      try {
+        const leasesData = await leaseApi.getLeases();
+        setLeases(Array.isArray(leasesData) ? leasesData : []);
+      } catch (error) {
+        console.warn('Could not fetch leases:', error);
+        setLeases([]);
+      }
       
     } catch (error) {
       console.error('Error refreshing financial data:', error);
@@ -513,20 +533,20 @@ export default function MasterFinancePage() {
                 </button>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <button 
-                  onClick={() => openModal('recordPayment')}
+                  onClick={() => setShowManualPaymentModal(true)}
                   className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                 >
                   <PlusIcon className="h-8 w-8 text-blue-400 mb-2" />
                   <span className="text-sm text-foreground">Record Payment</span>
                 </button>
                 <button 
-                  onClick={() => openModal('generateInvoice')}
+                  onClick={() => setShowAdjustmentModal(true)}
                   className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                 >
                   <DocumentTextIcon className="h-8 w-8 text-green-400 mb-2" />
-                  <span className="text-sm text-foreground">Generate Invoice</span>
+                  <span className="text-sm text-foreground">Create Adjustment</span>
                 </button>
                 <div className="relative">
                   <button 
@@ -559,9 +579,19 @@ export default function MasterFinancePage() {
                     </div>
                   )}
                 </div>
-                <button className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                <button 
+                  onClick={() => setShowCSVImportModal(true)}
+                  className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                >
                   <ArrowUpTrayIcon className="h-8 w-8 text-orange-400 mb-2" />
                   <span className="text-sm text-foreground">Import Transactions</span>
+                </button>
+                <button 
+                  onClick={() => router.push('/dashboard/tenants')}
+                  className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                >
+                  <DocumentTextIcon className="h-8 w-8 text-indigo-400 mb-2" />
+                  <span className="text-sm text-foreground">View Statements</span>
                 </button>
               </div>
             </div>
@@ -699,46 +729,49 @@ export default function MasterFinancePage() {
           </div>
         )}
 
-        {/* Modal */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6 max-w-md w-full mx-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-medium text-white">
-                  {modalType === 'recordPayment' && 'Record Payment'}
-                  {modalType === 'generateInvoice' && 'Generate Invoice'}
-                  {modalType === 'viewDetails' && 'View Details'}
-                  {modalType === 'sendReminder' && 'Send Reminder'}
-                </h3>
-                <button onClick={closeModal} className="text-muted-foreground/70 hover:text-white">
-                  <XMarkIcon className="h-6 w-6" />
-                </button>
-              </div>
-              <div className="text-muted-foreground">
-                <p>Modal functionality will be implemented here for {modalType}.</p>
-                {selectedItem && (
-                  <div className="mt-4 p-4 bg-white/5 rounded-lg">
-                    <pre className="text-xs">{JSON.stringify(selectedItem, null, 2)}</pre>
-                  </div>
-                )}
-              </div>
-              <div className="mt-6 flex justify-end space-x-3">
-                <button 
-                  onClick={closeModal}
-                  className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={closeModal}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
-                >
-                  Confirm
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Payment Modals */}
+        <CSVImportModal
+          isOpen={showCSVImportModal}
+          onClose={() => setShowCSVImportModal(false)}
+          onSuccess={() => {
+            setShowCSVImportModal(false);
+            refreshFinancialData();
+          }}
+        />
+
+        <ManualPaymentModal
+          isOpen={showManualPaymentModal}
+          onClose={() => setShowManualPaymentModal(false)}
+          onSuccess={() => {
+            setShowManualPaymentModal(false);
+            refreshFinancialData();
+          }}
+          leases={leases}
+        />
+
+        <PaymentAllocationModal
+          isOpen={showPaymentAllocationModal}
+          onClose={() => setShowPaymentAllocationModal(false)}
+          onSuccess={() => {
+            setShowPaymentAllocationModal(false);
+            refreshFinancialData();
+          }}
+          paymentId={undefined}
+          bankTransactionId={undefined}
+          paymentType="manual"
+          paymentAmount={0}
+          invoices={[]}
+        />
+
+        <AdjustmentModal
+          isOpen={showAdjustmentModal}
+          onClose={() => setShowAdjustmentModal(false)}
+          onSuccess={() => {
+            setShowAdjustmentModal(false);
+            refreshFinancialData();
+          }}
+          invoice={null}
+        />
       </div>
     </DashboardLayout>
   );

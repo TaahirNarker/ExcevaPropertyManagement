@@ -1,8 +1,11 @@
 from django.contrib import admin
 from .models import (
     Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog,
-    TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings
+    TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings,
+    BankTransaction, ManualPayment, PaymentAllocation, Adjustment, CSVImportBatch,
+    AdjustmentAuditLog, UnderpaymentAlert
 )
+from django.utils import timezone
 
 
 class InvoiceLineItemInline(admin.TabularInline):
@@ -193,3 +196,127 @@ class SystemSettingsAdmin(admin.ModelAdmin):
     def has_module_permission(self, request):
         """Only superusers can access system settings"""
         return request.user.is_superuser
+
+
+# New Payment Models Admin
+@admin.register(BankTransaction)
+class BankTransactionAdmin(admin.ModelAdmin):
+    list_display = ['transaction_date', 'description', 'amount', 'transaction_type', 'status', 'tenant_reference', 'import_batch']
+    list_filter = ['status', 'transaction_type', 'transaction_date', 'import_batch']
+    search_fields = ['description', 'reference_number', 'tenant_reference', 'import_batch']
+    readonly_fields = ['import_date', 'created_at', 'updated_at']
+    
+    def has_add_permission(self, request):
+        return False  # Only created via CSV import
+    
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser  # Only superusers can delete
+
+
+@admin.register(ManualPayment)
+class ManualPaymentAdmin(admin.ModelAdmin):
+    list_display = ['payment_date', 'lease', 'payment_method', 'amount', 'status', 'allocated_amount', 'recorded_by']
+    list_filter = ['status', 'payment_method', 'payment_date']
+    search_fields = ['lease__tenant__name', 'reference_number', 'notes']
+    readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(PaymentAllocation)
+class PaymentAllocationAdmin(admin.ModelAdmin):
+    list_display = ['invoice', 'allocated_amount', 'allocation_type', 'allocation_date', 'allocated_by']
+    list_filter = ['allocation_type', 'allocation_date']
+    search_fields = ['invoice__invoice_number', 'notes']
+    readonly_fields = ['allocation_date', 'created_at', 'updated_at']
+
+
+@admin.register(Adjustment)
+class AdjustmentAdmin(admin.ModelAdmin):
+    list_display = ['invoice', 'adjustment_type', 'amount', 'reason', 'is_approved', 'applied_date', 'applied_by']
+    list_filter = ['adjustment_type', 'is_approved', 'applied_date']
+    search_fields = ['invoice__invoice_number', 'reason', 'notes']
+    readonly_fields = ['applied_date', 'created_at', 'updated_at']
+
+
+@admin.register(CSVImportBatch)
+class CSVImportBatchAdmin(admin.ModelAdmin):
+    list_display = ['batch_id', 'filename', 'bank_name', 'status', 'total_transactions', 'successful_reconciliations', 'imported_by']
+    list_filter = ['status', 'bank_name', 'import_date']
+    search_fields = ['batch_id', 'filename', 'bank_name']
+    readonly_fields = ['import_date', 'created_at', 'updated_at']
+    
+    def has_add_permission(self, request):
+        return False  # Only created via CSV import process
+
+
+@admin.register(AdjustmentAuditLog)
+class AdjustmentAuditLogAdmin(admin.ModelAdmin):
+    """Admin interface for adjustment audit logs"""
+    list_display = ['invoice', 'adjustment_type', 'amount', 'created_by', 'created_at', 'effective_date']
+    list_filter = ['adjustment_type', 'created_at', 'effective_date']
+    search_fields = ['invoice__invoice_number', 'reason', 'notes']
+    readonly_fields = ['created_at', 'pre_adjustment_total', 'post_adjustment_total']
+    ordering = ['-created_at']
+    
+    fieldsets = (
+        ('Adjustment Details', {
+            'fields': ('invoice', 'adjustment', 'adjustment_type', 'amount', 'reason', 'notes')
+        }),
+        ('Audit Information', {
+            'fields': ('pre_adjustment_total', 'post_adjustment_total', 'effective_date')
+        }),
+        ('User Tracking', {
+            'fields': ('created_by', 'created_at')
+        }),
+    )
+
+
+@admin.register(UnderpaymentAlert)
+class UnderpaymentAlertAdmin(admin.ModelAdmin):
+    """Admin interface for underpayment alerts"""
+    list_display = ['tenant', 'invoice', 'shortfall_amount', 'status', 'created_at']
+    list_filter = ['status', 'created_at', 'acknowledged_at']
+    search_fields = ['tenant__name', 'invoice__invoice_number', 'alert_message']
+    readonly_fields = ['created_at', 'expected_amount', 'actual_amount', 'shortfall_amount']
+    ordering = ['-created_at']
+    
+    fieldsets = (
+        ('Alert Details', {
+            'fields': ('tenant', 'invoice', 'payment', 'bank_transaction', 'alert_message')
+        }),
+        ('Payment Information', {
+            'fields': ('expected_amount', 'actual_amount', 'shortfall_amount')
+        }),
+        ('Status Tracking', {
+            'fields': ('status', 'acknowledged_at', 'resolved_at', 'acknowledged_by')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at',)
+        }),
+    )
+    
+    actions = ['acknowledge_alerts', 'resolve_alerts', 'dismiss_alerts']
+    
+    def acknowledge_alerts(self, request, queryset):
+        """Acknowledge selected alerts"""
+        updated = queryset.update(
+            status='acknowledged',
+            acknowledged_at=timezone.now(),
+            acknowledged_by=request.user
+        )
+        self.message_user(request, f'{updated} alerts acknowledged successfully.')
+    acknowledge_alerts.short_description = "Acknowledge selected alerts"
+    
+    def resolve_alerts(self, request, queryset):
+        """Resolve selected alerts"""
+        updated = queryset.update(
+            status='resolved',
+            resolved_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} alerts resolved successfully.')
+    resolve_alerts.short_description = "Resolve selected alerts"
+    
+    def dismiss_alerts(self, request, queryset):
+        """Dismiss selected alerts"""
+        updated = queryset.update(status='dismissed')
+        self.message_user(request, f'{updated} alerts dismissed successfully.')
+    dismiss_alerts.short_description = "Dismiss selected alerts"

@@ -23,6 +23,18 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 from users.views import CustomTokenObtainPairView
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+
+# Health check endpoint for local development
+@csrf_exempt
+def health_check(request):
+    """Simple health check endpoint for monitoring"""
+    return JsonResponse({
+        'status': 'healthy',
+        'service': 'Exceva Property Management API',
+        'version': '1.0.0'
+    })
 
 # Admin site customization
 admin.site.site_header = "Property Control System"
@@ -39,6 +51,9 @@ urlpatterns = [
     path('api/auth/verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('api/auth/', include('users.urls')),
     
+    # Health check endpoint
+    path('api/health/', health_check, name='health_check'),
+
     # API endpoints
     path('api/', include('property_control_system.api_urls')),
     path('api/reports/', include('reports.urls')),

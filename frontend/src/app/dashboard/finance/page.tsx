@@ -15,7 +15,9 @@ import {
   UserGroupIcon,
   DocumentTextIcon,
   ShieldCheckIcon,
-  XMarkIcon
+  XMarkIcon,
+  PlusIcon,
+  ArrowUpTrayIcon
 } from '@heroicons/react/24/outline';
 
 // Type definitions
@@ -235,6 +237,48 @@ export default function FinancePage() {
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+            <h3 className="text-lg font-medium text-foreground mb-4">Quick Actions</h3>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <button 
+                onClick={() => router.push('/dashboard/finance/master')}
+                className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <PlusIcon className="h-8 w-8 text-blue-400 mb-2" />
+                <span className="text-sm text-foreground">Record Payment</span>
+              </button>
+              <button 
+                onClick={() => router.push('/dashboard/finance/master')}
+                className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <DocumentTextIcon className="h-8 w-8 text-green-400 mb-2" />
+                <span className="text-sm text-foreground">Create Adjustment</span>
+              </button>
+              <button 
+                onClick={() => router.push('/dashboard/finance/master')}
+                className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <ArrowUpTrayIcon className="h-8 w-8 text-orange-400 mb-2" />
+                <span className="text-sm text-foreground">Import Transactions</span>
+              </button>
+              <button 
+                onClick={() => router.push('/dashboard/tenants')}
+                className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <DocumentTextIcon className="h-8 w-8 text-indigo-400 mb-2" />
+                <span className="text-sm text-foreground">View Statements</span>
+              </button>
+              <button 
+                onClick={() => router.push('/dashboard/finance/master')}
+                className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+              >
+                <ChartBarIcon className="h-8 w-8 text-purple-400 mb-2" />
+                <span className="text-sm text-foreground">Master Finance</span>
+              </button>
             </div>
           </div>
 

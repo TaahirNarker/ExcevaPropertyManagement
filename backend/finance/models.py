@@ -491,6 +491,309 @@ class InvoiceDraft(models.Model):
 
 # System settings will be defined at the end to avoid circular imports
 
+class BankTransaction(models.Model):
+    """
+    Bank transaction records imported from CSV for automatic reconciliation
+    """
+    TRANSACTION_STATUS_CHOICES = [
+        ('pending', 'Pending Reconciliation'),
+        ('reconciled', 'Reconciled'),
+        ('manual_review', 'Manual Review Required'),
+        ('failed', 'Reconciliation Failed'),
+    ]
+    
+    # Import tracking
+    import_batch = models.CharField(max_length=100, help_text="Batch identifier for CSV import")
+    import_date = models.DateTimeField(auto_now_add=True)
+    
+    # Bank transaction details
+    transaction_date = models.DateField()
+    description = models.CharField(max_length=500)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    transaction_type = models.CharField(max_length=20, choices=[('credit', 'Credit'), ('debit', 'Debit')])
+    reference_number = models.CharField(max_length=100, blank=True)
+    bank_account = models.CharField(max_length=100, blank=True)
+    
+    # Reconciliation fields
+    status = models.CharField(max_length=20, choices=TRANSACTION_STATUS_CHOICES, default='pending')
+    tenant_reference = models.CharField(max_length=100, blank=True, help_text="Extracted tenant reference for matching")
+    matched_lease = models.ForeignKey('leases.Lease', on_delete=models.SET_NULL, null=True, blank=True, related_name='bank_transactions')
+    matched_invoice = models.ForeignKey('Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='bank_transactions')
+    
+    # Manual allocation
+    manually_allocated = models.BooleanField(default=False)
+    allocation_notes = models.TextField(blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-transaction_date', '-created_at']
+        verbose_name = 'Bank Transaction'
+        verbose_name_plural = 'Bank Transactions'
+    
+    def __str__(self):
+        return f"{self.transaction_date} - {self.description} - R{self.amount}"
+
+
+class ManualPayment(models.Model):
+    """
+    Manual payment entries for cash, check, or other payment methods
+    """
+    PAYMENT_METHOD_CHOICES = [
+        ('cash', 'Cash'),
+        ('check', 'Check'),
+        ('bank_transfer', 'Bank Transfer'),
+        ('credit_card', 'Credit Card'),
+        ('other', 'Other'),
+    ]
+    
+    PAYMENT_STATUS_CHOICES = [
+        ('pending', 'Pending Allocation'),
+        ('allocated', 'Allocated'),
+        ('cancelled', 'Cancelled'),
+    ]
+    
+    # Payment details
+    lease = models.ForeignKey('leases.Lease', on_delete=models.CASCADE, related_name='manual_payments')
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_date = models.DateField()
+    reference_number = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    
+    # Status and allocation
+    status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending')
+    allocated_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    
+    # User tracking
+    recorded_by = models.ForeignKey('users.CustomUser', on_delete=models.SET_NULL, null=True, related_name='recorded_payments')
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-payment_date', '-created_at']
+        verbose_name = 'Manual Payment'
+        verbose_name_plural = 'Manual Payments'
+    
+    def __str__(self):
+        return f"{self.payment_date} - {self.lease.tenant.name} - R{self.amount} ({self.payment_method})"
+    
+    def save(self, *args, **kwargs):
+        # Calculate remaining amount
+        self.remaining_amount = self.amount - self.allocated_amount
+        super().save(*args, **kwargs)
+
+
+class PaymentAllocation(models.Model):
+    """
+    Tracks how payments are allocated across invoices
+    """
+    ALLOCATION_TYPE_CHOICES = [
+        ('automatic', 'Automatic'),
+        ('manual', 'Manual'),
+        ('csv_import', 'CSV Import'),
+    ]
+    
+    # Payment source
+    payment = models.ForeignKey(ManualPayment, on_delete=models.CASCADE, related_name='allocations', null=True, blank=True)
+    bank_transaction = models.ForeignKey(BankTransaction, on_delete=models.CASCADE, related_name='allocations', null=True, blank=True)
+    
+    # Invoice allocation
+    invoice = models.ForeignKey('Invoice', on_delete=models.CASCADE, related_name='payment_allocations')
+    allocated_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    
+    # Allocation details
+    allocation_type = models.CharField(max_length=20, choices=ALLOCATION_TYPE_CHOICES)
+    allocation_date = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True)
+    
+    # User tracking
+    allocated_by = models.ForeignKey('users.CustomUser', on_delete=models.SET_NULL, null=True, related_name='payment_allocations')
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-allocation_date']
+        verbose_name = 'Payment Allocation'
+        verbose_name_plural = 'Payment Allocations'
+    
+    def __str__(self):
+        payment_source = self.payment or self.bank_transaction
+        return f"{payment_source} → {self.invoice.invoice_number} (R{self.allocated_amount})"
+
+
+class Adjustment(models.Model):
+    """
+    Manual adjustments, waivers, discounts, or additional charges
+    """
+    ADJUSTMENT_TYPE_CHOICES = [
+        ('waiver', 'Waiver'),
+        ('discount', 'Discount'),
+        ('credit', 'Credit'),
+        ('charge', 'Additional Charge'),
+        ('late_fee', 'Late Fee'),
+    ]
+    
+    # Adjustment details
+    invoice = models.ForeignKey('Invoice', on_delete=models.CASCADE, related_name='adjustments')
+    adjustment_type = models.CharField(max_length=20, choices=ADJUSTMENT_TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2, help_text="Negative for credits, positive for charges")
+    reason = models.CharField(max_length=255)
+    notes = models.TextField(blank=True)
+    
+    # Approval and application
+    is_approved = models.BooleanField(default=True)
+    applied_date = models.DateTimeField(auto_now_add=True)
+    effective_date = models.DateField(help_text="Date when adjustment takes effect")
+    
+    # User tracking
+    applied_by = models.ForeignKey('users.CustomUser', on_delete=models.SET_NULL, null=True, related_name='applied_adjustments')
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-applied_date']
+        verbose_name = 'Adjustment'
+        verbose_name_plural = 'Adjustments'
+    
+    def __str__(self):
+        return f"{self.adjustment_type} - {self.invoice.invoice_number} - R{self.amount}"
+    
+    def save(self, *args, **kwargs):
+        """Override save to create audit log and update invoice totals"""
+        # Store pre-adjustment total for audit
+        pre_total = self.invoice.total_amount if self.pk else self.invoice.total_amount
+        
+        # Save the adjustment
+        super().save(*args, **kwargs)
+        
+        # Update invoice totals
+        self.invoice.calculate_totals()
+        self.invoice.save()
+        
+        # Create audit log entry if this is a new adjustment
+        if not self.pk:  # New adjustment
+            try:
+                AdjustmentAuditLog.create_audit_entry(
+                    adjustment=self,
+                    user=getattr(self, '_created_by', None),  # Set by service layer
+                    pre_total=pre_total,
+                    post_total=self.invoice.total_amount
+                )
+            except Exception as e:
+                # Log error but don't fail the save
+                print(f"Failed to create adjustment audit log: {e}")
+
+
+class AdjustmentAuditLog(models.Model):
+    """
+    Audit trail for all adjustments and waivers for historical tracking
+    """
+    ADJUSTMENT_TYPE_CHOICES = [
+        ('waiver', 'Waiver'),
+        ('discount', 'Discount'),
+        ('credit', 'Credit'),
+        ('penalty', 'Penalty'),
+        ('correction', 'Correction'),
+        ('other', 'Other'),
+    ]
+    
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='adjustment_audit_logs')
+    adjustment = models.ForeignKey('Adjustment', on_delete=models.CASCADE, related_name='audit_logs')
+    
+    adjustment_type = models.CharField(max_length=20, choices=ADJUSTMENT_TYPE_CHOICES)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.TextField()
+    notes = models.TextField(blank=True)
+    
+    # Pre and post adjustment values
+    pre_adjustment_total = models.DecimalField(max_digits=12, decimal_places=2)
+    post_adjustment_total = models.DecimalField(max_digits=12, decimal_places=2)
+    
+    # User who made the adjustment
+    created_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    effective_date = models.DateField()
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Adjustment Audit Log'
+        verbose_name_plural = 'Adjustment Audit Logs'
+    
+    def __str__(self):
+        return f"Adjustment Audit - {self.invoice.invoice_number} - {self.adjustment_type} - R{self.amount}"
+    
+    @classmethod
+    def create_audit_entry(cls, adjustment, user, pre_total, post_total):
+        """Create audit log entry for an adjustment"""
+        return cls.objects.create(
+            invoice=adjustment.invoice,
+            adjustment=adjustment,
+            adjustment_type=adjustment.adjustment_type,
+            amount=adjustment.amount,
+            reason=adjustment.reason,
+            notes=adjustment.notes,
+            pre_adjustment_total=pre_total,
+            post_adjustment_total=post_total,
+            created_by=user,
+            effective_date=adjustment.effective_date
+        )
+
+
+class CSVImportBatch(models.Model):
+    """
+    Tracks CSV import batches for audit and error handling
+    """
+    IMPORT_STATUS_CHOICES = [
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('partial', 'Partially Completed'),
+    ]
+    
+    # Import details
+    batch_id = models.CharField(max_length=100, unique=True)
+    filename = models.CharField(max_length=255)
+    bank_name = models.CharField(max_length=100)
+    import_date = models.DateTimeField(auto_now_add=True)
+    
+    # Processing results
+    status = models.CharField(max_length=20, choices=IMPORT_STATUS_CHOICES, default='processing')
+    total_transactions = models.IntegerField(default=0)
+    successful_reconciliations = models.IntegerField(default=0)
+    manual_review_required = models.IntegerField(default=0)
+    failed_transactions = models.IntegerField(default=0)
+    
+    # Error tracking
+    error_log = models.TextField(blank=True)
+    
+    # User tracking
+    imported_by = models.ForeignKey('users.CustomUser', on_delete=models.SET_NULL, null=True, related_name='csv_imports')
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-import_date']
+        verbose_name = 'CSV Import Batch'
+        verbose_name_plural = 'CSV Import Batches'
+    
+    def __str__(self):
+        return f"{self.batch_id} - {self.bank_name} - {self.status}"
+
+
 class SystemSettings(models.Model):
     """
     System-wide settings for the finance module
@@ -565,3 +868,59 @@ class SystemSettings(models.Model):
             return setting.value
         except cls.DoesNotExist:
             return default
+
+
+class UnderpaymentAlert(models.Model):
+    """
+    Track underpayment alerts for tenant notifications
+    """
+    ALERT_STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('acknowledged', 'Acknowledged'),
+        ('resolved', 'Resolved'),
+        ('dismissed', 'Dismissed'),
+    ]
+    
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='underpayment_alerts')
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name='underpayment_alerts')
+    payment = models.ForeignKey('ManualPayment', on_delete=models.CASCADE, null=True, blank=True, related_name='underpayment_alerts')
+    bank_transaction = models.ForeignKey('BankTransaction', on_delete=models.CASCADE, null=True, blank=True, related_name='underpayment_alerts')
+    
+    expected_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    actual_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    shortfall_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    
+    alert_message = models.TextField()
+    status = models.CharField(max_length=20, choices=ALERT_STATUS_CHOICES, default='active')
+    
+    # Alert metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='acknowledged_alerts')
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Underpayment Alert'
+        verbose_name_plural = 'Underpayment Alerts'
+    
+    def __str__(self):
+        return f"Underpayment Alert - {self.tenant.name} - R{self.shortfall_amount}"
+    
+    def acknowledge(self, user):
+        """Mark alert as acknowledged"""
+        self.status = 'acknowledged'
+        self.acknowledged_at = timezone.now()
+        self.acknowledged_by = user
+        self.save()
+    
+    def resolve(self):
+        """Mark alert as resolved"""
+        self.status = 'resolved'
+        self.resolved_at = timezone.now()
+        self.save()
+    
+    def dismiss(self):
+        """Dismiss the alert"""
+        self.status = 'dismissed'
+        self.save()
