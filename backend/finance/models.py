@@ -1,4 +1,5 @@
 from django.db import models
+from decimal import Decimal
 from django.contrib.auth.models import User
 from django.utils import timezone
 from properties.models import Property
@@ -565,8 +566,9 @@ class ManualPayment(models.Model):
     
     # Status and allocation
     status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='pending')
-    allocated_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
-    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    # Use Decimal defaults to avoid Decimal/float arithmetic issues
+    allocated_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    remaining_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     
     # User tracking
     recorded_by = models.ForeignKey('users.CustomUser', on_delete=models.SET_NULL, null=True, related_name='recorded_payments')
@@ -584,8 +586,10 @@ class ManualPayment(models.Model):
         return f"{self.payment_date} - {self.lease.tenant.name} - R{self.amount} ({self.payment_method})"
     
     def save(self, *args, **kwargs):
-        # Calculate remaining amount
-        self.remaining_amount = self.amount - self.allocated_amount
+        # Calculate remaining amount using Decimal-safe arithmetic
+        amount_decimal = self.amount if isinstance(self.amount, Decimal) else Decimal(str(self.amount))
+        allocated_decimal = self.allocated_amount if isinstance(self.allocated_amount, Decimal) else Decimal(str(self.allocated_amount))
+        self.remaining_amount = amount_decimal - allocated_decimal
         super().save(*args, **kwargs)
 
 

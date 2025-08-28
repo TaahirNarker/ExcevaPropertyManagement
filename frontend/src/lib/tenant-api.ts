@@ -81,7 +81,7 @@ class TenantAPI {
       throw new Error('No authentication token found');
     }
 
-    const response = await fetch(`${API_BASE_URL}/tenants/${id}/leases/`, {
+    const response = await fetch(`${API_BASE_URL}/tenants/id/${id}/leases/`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -99,7 +99,7 @@ class TenantAPI {
       throw new Error('No authentication token found');
     }
 
-    const response = await fetch(`${API_BASE_URL}/tenants/${id}/documents/`, {
+    const response = await fetch(`${API_BASE_URL}/tenants/id/${id}/documents/`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -117,7 +117,7 @@ class TenantAPI {
       throw new Error('No authentication token found');
     }
 
-    const response = await fetch(`${API_BASE_URL}/tenants/${id}/communications/`, {
+    const response = await fetch(`${API_BASE_URL}/tenants/id/${id}/communications/`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,

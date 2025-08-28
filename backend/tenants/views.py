@@ -192,6 +192,86 @@ def tenant_statistics(request, tenant_code):
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
+def tenant_lease_history(request, tenant_code):
+    """
+    Get lease history for a specific tenant by tenant_code.
+    """
+    try:
+        tenant = Tenant.objects.get(tenant_code=tenant_code)
+        leases = tenant.leases.all().order_by('-start_date')
+        
+        lease_history = []
+        for lease in leases:
+            lease_data = {
+                'id': lease.id,
+                'property_name': lease.property.name,
+                'property_address': lease.property.address,
+                'start_date': lease.start_date,
+                'end_date': lease.end_date,
+                'monthly_rent': lease.monthly_rent,
+                'status': lease.status,
+                'deposit_amount': lease.deposit_amount,
+                'lease_type': lease.lease_type,
+                'rental_frequency': lease.rental_frequency,
+                'rent_due_day': lease.rent_due_day,
+                'created_at': lease.created_at,
+                'updated_at': lease.updated_at
+            }
+            lease_history.append(lease_data)
+        
+        return Response({
+            'count': len(lease_history),
+            'results': lease_history
+        })
+    
+    except Tenant.DoesNotExist:
+        return Response(
+            {'error': 'Tenant not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def tenant_lease_history_by_id(request, tenant_id):
+    """
+    Get lease history for a specific tenant by ID.
+    """
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+        leases = tenant.leases.all().order_by('-start_date')
+        
+        lease_history = []
+        for lease in leases:
+            lease_data = {
+                'id': lease.id,
+                'property_name': lease.property.name,
+                'property_address': lease.property.address,
+                'start_date': lease.start_date,
+                'end_date': lease.end_date,
+                'monthly_rent': lease.monthly_rent,
+                'status': lease.status,
+                'deposit_amount': lease.deposit_amount,
+                'lease_type': lease.lease_type,
+                'rental_frequency': lease.rental_frequency,
+                'rent_due_day': lease.rent_due_day,
+                'created_at': lease.created_at,
+                'updated_at': lease.updated_at
+            }
+            lease_history.append(lease_data)
+        
+        return Response({
+            'count': len(lease_history),
+            'results': lease_history
+        })
+    
+    except Tenant.DoesNotExist:
+        return Response(
+            {'error': 'Tenant not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
 def tenant_choices(request):
     """Get tenant choices for dropdowns."""
     tenants = Tenant.objects.all()
@@ -203,5 +283,70 @@ def tenant_choices(request):
         for tenant in tenants
     ]
     return Response(choices)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def tenant_communications_by_id(request, tenant_id):
+    """
+    Get communications for a specific tenant by ID.
+    """
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+        communications = tenant.communications.all().order_by('-created_at')
+        
+        comm_data = []
+        for comm in communications:
+            comm_data.append({
+                'id': comm.id,
+                'type': comm.type,
+                'date': comm.date,
+                'subject': comm.subject,
+                'content': comm.content,
+                'created_at': comm.created_at
+            })
+        
+        return Response({
+            'count': len(comm_data),
+            'results': comm_data
+        })
+    
+    except Tenant.DoesNotExist:
+        return Response(
+            {'error': 'Tenant not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def tenant_documents_by_id(request, tenant_id):
+    """
+    Get documents for a specific tenant by ID.
+    """
+    try:
+        tenant = Tenant.objects.get(id=tenant_id)
+        documents = tenant.documents.all().order_by('-uploaded_at')
+        
+        doc_data = []
+        for doc in documents:
+            doc_data.append({
+                'id': doc.id,
+                'name': doc.name,
+                'type': doc.type,
+                'uploaded_at': doc.uploaded_at,
+                'expires_at': doc.expires_at
+            })
+        
+        return Response({
+            'count': len(doc_data),
+            'results': doc_data
+        })
+    
+    except Tenant.DoesNotExist:
+        return Response(
+            {'error': 'Tenant not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
 
 

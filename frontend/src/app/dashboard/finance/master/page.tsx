@@ -4,11 +4,12 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { financeApi, leaseApi } from '@/lib/api';
+import { financeApi, leaseApi, invoiceApi } from '@/lib/api';
 import CSVImportModal from '@/components/CSVImportModal';
 import ManualPaymentModal from '@/components/ManualPaymentModal';
 import PaymentAllocationModal from '@/components/PaymentAllocationModal';
 import AdjustmentModal from '@/components/AdjustmentModal';
+import InvoiceSelectionModal from '@/components/InvoiceSelectionModal';
 import {
   generateFinancialOverviewPDF,
   generateIncomeReportPDF,
@@ -153,7 +154,10 @@ export default function MasterFinancePage() {
   const [showManualPaymentModal, setShowManualPaymentModal] = useState(false);
   const [showPaymentAllocationModal, setShowPaymentAllocationModal] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [showInvoiceSelectionModal, setShowInvoiceSelectionModal] = useState(false);
   const [leases, setLeases] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [selectedInvoiceForAdjustment, setSelectedInvoiceForAdjustment] = useState<any>(null);
   
   // Dropdown state management
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -197,19 +201,47 @@ export default function MasterFinancePage() {
       
       // Fetch leases for payment modals
       try {
-        const leasesData = await leaseApi.getLeases();
-        setLeases(Array.isArray(leasesData) ? leasesData : []);
+        const leasesResponse = await leaseApi.getLeases({ page_size: 1000 }); // Fetch up to 1000 leases
+        console.log('Leases response:', leasesResponse);
+        console.log('Leases results:', leasesResponse.results);
+        setLeases(Array.isArray(leasesResponse.results) ? leasesResponse.results : []);
+        console.log('Leases set to state:', Array.isArray(leasesResponse.results) ? leasesResponse.results : []);
       } catch (error) {
-        console.warn('Could not fetch leases:', error);
+        console.warn('Failed to fetch leases:', error);
         setLeases([]);
       }
       
+      // Fetch invoices for adjustment modal
+      try {
+        const invoicesData = await invoiceApi.getInvoices();
+        setInvoices(Array.isArray(invoicesData) ? invoicesData : []);
+      } catch (error) {
+        console.warn('Failed to fetch invoices:', error);
+        setInvoices([]);
+      }
+      
     } catch (error) {
-      console.error('Error refreshing financial data:', error);
-      alert('Failed to refresh financial data. Please try again.');
+      console.error('Error fetching financial data:', error);
+      setError('Failed to load financial data. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle adjustment creation
+  const handleCreateAdjustment = () => {
+    if (invoices.length === 0) {
+      setError('No invoices available for adjustment. Please create some invoices first.');
+      return;
+    }
+    setShowInvoiceSelectionModal(true);
+  };
+
+  // Handle invoice selection for adjustment
+  const handleInvoiceSelectedForAdjustment = (invoice: any) => {
+    setSelectedInvoiceForAdjustment(invoice);
+    setShowInvoiceSelectionModal(false);
+    setShowAdjustmentModal(true);
   };
 
   // Initialize data
@@ -242,6 +274,15 @@ export default function MasterFinancePage() {
           // Fetch bank transactions
           const transactions = await financeApi.getBankTransactions();
           setBankTransactions(Array.isArray(transactions) ? transactions : []);
+
+          // Prefetch leases so payment modal has data on first open
+          try {
+            const leasesResponse = await leaseApi.getLeases({ page_size: 1000 });
+            setLeases(Array.isArray(leasesResponse.results) ? leasesResponse.results : []);
+          } catch (prefetchError) {
+            console.warn('Failed to prefetch leases during initial load:', prefetchError);
+            setLeases([]);
+          }
           
         } catch (error) {
           console.error('Error fetching financial data:', error);
@@ -535,14 +576,26 @@ export default function MasterFinancePage() {
               
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <button 
-                  onClick={() => setShowManualPaymentModal(true)}
+                  onClick={async () => {
+                    // Prefetch leases so search has data immediately
+                    try {
+                      if (!Array.isArray(leases) || leases.length === 0) {
+                        const leasesResponse = await leaseApi.getLeases({ page_size: 1000 });
+                        setLeases(Array.isArray(leasesResponse.results) ? leasesResponse.results : []);
+                      }
+                    } catch (error) {
+                      console.warn('Failed to prefetch leases before opening Record Payment modal:', error);
+                      setLeases([]);
+                    }
+                    setShowManualPaymentModal(true);
+                  }}
                   className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                 >
                   <PlusIcon className="h-8 w-8 text-blue-400 mb-2" />
                   <span className="text-sm text-foreground">Record Payment</span>
                 </button>
                 <button 
-                  onClick={() => setShowAdjustmentModal(true)}
+                  onClick={handleCreateAdjustment}
                   className="flex flex-col items-center p-4 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                 >
                   <DocumentTextIcon className="h-8 w-8 text-green-400 mb-2" />
@@ -770,7 +823,14 @@ export default function MasterFinancePage() {
             setShowAdjustmentModal(false);
             refreshFinancialData();
           }}
-          invoice={null}
+          invoice={selectedInvoiceForAdjustment}
+        />
+
+        <InvoiceSelectionModal
+          isOpen={showInvoiceSelectionModal}
+          onClose={() => setShowInvoiceSelectionModal(false)}
+          onInvoiceSelect={handleInvoiceSelectedForAdjustment}
+          invoices={invoices}
         />
       </div>
     </DashboardLayout>

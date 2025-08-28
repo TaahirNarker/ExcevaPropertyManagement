@@ -32,11 +32,26 @@ class LeaseSerializer(serializers.ModelSerializer):
     
     def get_property(self, obj):
         try:
+            # Check if this is a sub-property (unit) and get unit number from name or create one
+            unit_number = None
+            if obj.property.parent_property:
+                # This is a sub-property (unit), extract unit number from name or use a default
+                property_name = obj.property.name
+                # Try to extract unit number from property name (e.g., "Unit 101", "Apt 2B")
+                import re
+                unit_match = re.search(r'(?:unit|apt|apartment|suite)\s*([a-z0-9-]+)', property_name.lower())
+                if unit_match:
+                    unit_number = unit_match.group(1).upper()
+                else:
+                    # If no unit number found, use the property name as unit identifier
+                    unit_number = property_name
+            
             return {
                 'id': obj.property.id,
                 'property_code': obj.property.property_code,
                 'name': obj.property.name,
-                'address': obj.property.full_address
+                'address': obj.property.full_address,
+                'unit_number': unit_number
             }
         except Exception as e:
             print(f"Error getting property data for lease {obj.id}: {e}")
@@ -44,7 +59,8 @@ class LeaseSerializer(serializers.ModelSerializer):
                 'id': obj.property.id if obj.property else None,
                 'property_code': obj.property.property_code if obj.property else None,
                 'name': 'Unknown',
-                'address': 'Unknown'
+                'address': 'Unknown',
+                'unit_number': None
             }
     
     def get_attachments_count(self, obj):

@@ -10,7 +10,7 @@ import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 // API Base URL - updated for production deployment
 export const API_BASE_URL = process.env.NODE_ENV === 'production' 
   ? 'https://propman.exceva.capital/api'
-  : 'http://127.0.0.1:8000/api';
+  : 'http://localhost:8000/api';
 
 // WebAuthn Configuration
 const WEBAUTHN_CONFIG = {

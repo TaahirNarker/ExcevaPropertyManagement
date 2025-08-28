@@ -5,7 +5,9 @@
 
 import { authService } from './auth';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Use the same convention as the rest of the app: base URL should already include 
+// the '/api' prefix so we don't accidentally create '/api/api' routes.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 // Enhanced interfaces for the new system
 export interface EnhancedInvoice {
@@ -134,7 +136,8 @@ class EnhancedInvoiceAPI {
 
   private async apiCall(endpoint: string, options: RequestInit = {}) {
     const token = authService.getAccessToken();
-    const url = `${API_BASE_URL}/api/finance${endpoint}`;
+    // Construct finance URL from standardized API root
+    const url = `${API_BASE_URL}/finance${endpoint}`;
 
     const config: RequestInit = {
       ...options,

@@ -570,8 +570,25 @@ export const unitApi = {
 
 // Lease API
 export const leaseApi = {
-  getLeases: async (): Promise<Lease[]> => {
-    const response = await fetchWithError(`${API_BASE_URL}/leases/`);
+  getLeases: async (params: {
+    search?: string;
+    status?: string;
+    property?: string | number;
+    tenant?: number;
+    page?: number;
+    page_size?: number;
+  } = {}): Promise<{ results: Lease[]; count: number; page: number; page_size: number; total_pages: number }> => {
+    const searchParams = new URLSearchParams();
+    
+    if (params.search) searchParams.append('search', params.search);
+    if (params.status) searchParams.append('status', params.status);
+    if (params.property) searchParams.append('property', params.property.toString());
+    if (params.tenant) searchParams.append('tenant', params.tenant.toString());
+    if (params.page) searchParams.append('page', params.page.toString());
+    if (params.page_size) searchParams.append('page_size', params.page_size.toString());
+    
+    const url = `${API_BASE_URL}/leases/${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+    const response = await fetchWithError(url);
     return response.json();
   },
 
@@ -1032,33 +1049,39 @@ export const invoiceApi = {
 
   // Invoice templates
   getInvoiceTemplates: async (): Promise<InvoiceTemplate[]> => {
-    const response = await api.get('/finance/invoice-templates/');
+    const response = await api.get('/finance/templates/');
     return response.data.results || response.data;
   },
 
   getInvoiceTemplate: async (id: string | number): Promise<InvoiceTemplate> => {
-    const response = await api.get(`/finance/invoice-templates/${id}/`);
+    const response = await api.get(`/finance/templates/${id}/`);
     return response.data;
   },
 
   createInvoiceTemplate: async (data: any): Promise<InvoiceTemplate> => {
-    const response = await api.post('/finance/invoice-templates/', data);
+    const response = await api.post('/finance/templates/', data);
     return response.data;
   },
 
   updateInvoiceTemplate: async (id: string | number, data: any): Promise<InvoiceTemplate> => {
-    const response = await api.patch(`/finance/invoice-templates/${id}/`, data);
+    const response = await api.patch(`/finance/templates/${id}/`, data);
     return response.data;
   },
 
   deleteInvoiceTemplate: async (id: string | number): Promise<void> => {
-    await api.delete(`/finance/invoice-templates/${id}/`);
+    await api.delete(`/finance/templates/${id}/`);
   },
 
   applyTemplateToInvoice: async (templateId: string | number, invoiceId: string | number): Promise<Invoice> => {
-    const response = await api.post(`/finance/invoice-templates/${templateId}/apply_to_invoice/`, {
+    const response = await api.post(`/finance/templates/${templateId}/apply_to_invoice/`, {
       invoice_id: invoiceId,
     });
+    return response.data;
+  },
+
+  // Manual payments (read-only listing)
+  listManualPaymentsByLease: async (leaseId: number) => {
+    const response = await api.get(`/finance/manual-payments/?lease=${leaseId}`);
     return response.data;
   },
 

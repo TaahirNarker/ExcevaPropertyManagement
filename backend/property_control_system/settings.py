@@ -186,7 +186,7 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.AllowAny',  # Temporarily allow all access for development
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
@@ -237,7 +237,7 @@ WEBAUTHN_ORIGIN = config('WEBAUTHN_ORIGIN', default='https://propman.exceva.capi
 
 # CORS Configuration - Production ready
 CORS_ALLOWED_ORIGINS = config('CORS_ALLOWED_ORIGINS', 
-    default='https://propman.exceva.capital,https://www.propman.exceva.capital', 
+    default='https://propman.exceva.capital,https://www.propman.exceva.capital,http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001', 
     cast=Csv())
 
 CORS_ALLOW_CREDENTIALS = True

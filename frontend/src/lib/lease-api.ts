@@ -192,6 +192,19 @@ class LeaseAPI {
     return this.handleResponse(response, 0, leaseData);
   }
 
+  async updateLease(leaseId: number, updateData: Partial<Lease>): Promise<Lease> {
+    const response = await fetch(`${API_BASE_URL}/leases/${leaseId}/`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${authService.getAccessToken()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updateData),
+    });
+    
+    return this.handleResponse(response, 0, updateData);
+  }
+
   async deleteLease(leaseId: number): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/leases/${leaseId}/`, {
       method: 'DELETE',

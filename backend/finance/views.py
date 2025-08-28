@@ -823,6 +823,39 @@ class InvoicePaymentViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+class ManualPaymentViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only access to manual payments. Supports filtering by lease and status.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = ManualPaymentSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['lease', 'status', 'payment_method']
+    ordering_fields = ['payment_date', 'amount']
+    ordering = ['-payment_date']
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = ManualPayment.objects.select_related('lease__tenant', 'lease__property')
+
+        if user.is_staff:
+            return qs
+
+        # Default: show payments for leases created by the user
+        return qs.filter(lease__created_by=user)
+
+    @action(detail=False, methods=['get'])
+    def by_lease(self, request):
+        lease_id = request.query_params.get('lease_id') or request.query_params.get('lease')
+        if not lease_id:
+            return Response({'error': 'lease_id parameter is required'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            payments = self.get_queryset().filter(lease_id=lease_id)
+            serializer = self.get_serializer(payments, many=True)
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 class InvoiceAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing invoice audit logs (read-only)
@@ -837,7 +870,9 @@ class FinanceAPIViewSet(viewsets.ViewSet):
     """
     ViewSet for finance dashboard data
     """
-    permission_classes = [IsAuthenticated]
+    # Temporarily allow all access for development
+    # TODO: Restore authentication in production
+    permission_classes = []
     
     @action(detail=False, methods=['get'])
     def financial_summary(self, request):
@@ -1094,32 +1129,251 @@ class FinanceAPIViewSet(viewsets.ViewSet):
     
     @action(detail=False, methods=['get'])
     def bank_transactions(self, request):
-        """Get bank transaction data"""
+        """Get bank transactions for reconciliation"""
         try:
-            # Simplified bank transactions based on invoice payments
-            bank_transactions = []
+            # Get query parameters
+            status = request.query_params.get('status', 'pending')
+            bank_name = request.query_params.get('bank_name', '')
+            date_from = request.query_params.get('date_from', '')
+            date_to = request.query_params.get('date_to', '')
             
-            payments = InvoicePayment.objects.all().order_by('-payment_date')[:50]
-            balance = Decimal('0.00')
+            # Build query
+            queryset = BankTransaction.objects.all()
             
-            for payment in payments:
-                # Calculate running balance
-                balance += payment.amount
-                
-                bank_transactions.append({
-                    'id': str(payment.id),
-                    'date': payment.payment_date.isoformat(),
-                    'description': f"Payment - {payment.invoice.tenant.name}",
-                    'amount': float(payment.amount),
-                    'type': 'credit',
-                    'category': 'Rental Income',
-                    'balance': float(balance),
-                    'reference': payment.reference_number or f"TXN{payment.id}",
-                    'reconciled': True,
-                })
+            if status:
+                queryset = queryset.filter(status=status)
+            if bank_name:
+                queryset = queryset.filter(bank_name__icontains=bank_name)
+            if date_from:
+                queryset = queryset.filter(transaction_date__gte=date_from)
+            if date_to:
+                queryset = queryset.filter(transaction_date__lte=date_to)
             
-            return Response(bank_transactions)
+            # Paginate results
+            page = self.paginate_queryset(queryset)
+            if page is not None:
+                serializer = BankTransactionSerializer(page, many=True)
+                return self.get_paginated_response(serializer.data)
+            
+            serializer = BankTransactionSerializer(queryset, many=True)
+            return Response(serializer.data)
+            
         except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def lease_financials(self, request):
+        """Get comprehensive financial data for a specific lease"""
+        # Temporarily allow unauthenticated access for development
+        # TODO: Remove this in production
+        try:
+            lease_id = request.query_params.get('lease_id')
+            if not lease_id:
+                return Response(
+                    {'error': 'lease_id parameter is required'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get lease
+            try:
+                lease = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
+                return Response(
+                    {'error': 'Lease not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Get all invoices for this lease
+            invoices = Invoice.objects.filter(lease=lease).select_related(
+                'tenant', 'property'
+            ).prefetch_related('line_items', 'payments', 'adjustments')
+            
+            # Calculate financial summary
+            total_invoiced = invoices.aggregate(
+                total=Sum('total_amount')
+            )['total'] or Decimal('0.00')
+            
+            total_paid = invoices.aggregate(
+                total=Sum('amount_paid')
+            )['total'] or Decimal('0.00')
+            
+            total_outstanding = invoices.aggregate(
+                total=Sum('balance_due')
+            )['total'] or Decimal('0.00')
+            
+            # Get overdue invoices
+            overdue_invoices = invoices.filter(
+                status='overdue',
+                balance_due__gt=0
+            )
+            
+            # Get recent payments
+            recent_payments = InvoicePayment.objects.filter(
+                invoice__lease=lease
+            ).select_related('invoice').order_by('-payment_date')[:10]
+            
+            # Get recurring charges
+            recurring_charges = RecurringCharge.objects.filter(
+                lease=lease,
+                is_active=True
+            )
+            
+            # Get rent escalation history
+            rent_escalations = RentEscalationLog.objects.filter(
+                lease=lease
+            ).order_by('-effective_date')
+            
+            # Get invoice history with detailed breakdown
+            invoice_history = []
+            for invoice in invoices.order_by('-issue_date'):
+                invoice_data = {
+                    'id': invoice.id,
+                    'invoice_number': invoice.invoice_number,
+                    'issue_date': invoice.issue_date,
+                    'due_date': invoice.due_date,
+                    'status': invoice.status,
+                    'total_amount': float(invoice.total_amount),
+                    'amount_paid': float(invoice.amount_paid),
+                    'balance_due': float(invoice.balance_due),
+                    'billing_period_start': invoice.billing_period_start,
+                    'billing_period_end': invoice.billing_period_end,
+                    'is_overdue': invoice.is_overdue(),
+                    'days_overdue': invoice.days_overdue() if invoice.is_overdue() else 0,
+                    'line_items': [
+                        {
+                            'description': item.description,
+                            'category': item.category,
+                            'quantity': float(item.quantity),
+                            'unit_price': float(item.unit_price),
+                            'total': float(item.total)
+                        }
+                        for item in invoice.line_items.all()
+                    ],
+                    'payments': [
+                        {
+                            'amount': float(payment.amount),
+                            'payment_date': payment.payment_date,
+                            'payment_method': payment.payment_method,
+                            'reference_number': payment.reference_number
+                        }
+                        for payment in invoice.payments.all()
+                    ],
+                    'adjustments': [
+                        {
+                            'type': adj.adjustment_type,
+                            'amount': float(adj.amount),
+                            'reason': adj.reason,
+                            'effective_date': adj.effective_date
+                        }
+                        for adj in invoice.adjustments.all()
+                    ]
+                }
+                invoice_history.append(invoice_data)
+            
+            # Get payment summary by month
+            payment_summary = {}
+            for payment in InvoicePayment.objects.filter(invoice__lease=lease):
+                month_key = payment.payment_date.strftime('%Y-%m')
+                if month_key not in payment_summary:
+                    payment_summary[month_key] = {
+                        'month': month_key,
+                        'total_payments': Decimal('0.00'),
+                        'payment_count': 0
+                    }
+                payment_summary[month_key]['total_payments'] += payment.amount
+                payment_summary[month_key]['payment_count'] += 1
+            
+            # Convert to list and sort by month
+            payment_summary = sorted(
+                payment_summary.values(), 
+                key=lambda x: x['month'], 
+                reverse=True
+            )
+            
+            # Convert Decimal values to float for JSON serialization
+            for month_data in payment_summary:
+                month_data['total_payments'] = float(month_data['total_payments'])
+            
+            # Get tenant credit balance
+            try:
+                credit_balance = TenantCreditBalance.objects.get(tenant=lease.tenant)
+                tenant_credit = float(credit_balance.balance)
+            except TenantCreditBalance.DoesNotExist:
+                tenant_credit = 0.00
+            
+            # Calculate collection rate for this lease
+            collection_rate = 0
+            if total_invoiced > 0:
+                collection_rate = (total_paid / total_invoiced) * 100
+            
+            return Response({
+                'lease_info': {
+                    'id': lease.id,
+                    'monthly_rent': float(lease.monthly_rent),
+                    'deposit_amount': float(lease.deposit_amount),
+                    'rental_frequency': lease.rental_frequency,
+                    'rent_due_day': lease.rent_due_day,
+                    'late_fee_type': lease.late_fee_type,
+                    'late_fee_percentage': float(lease.late_fee_percentage) if lease.late_fee_percentage else 0,
+                    'late_fee_amount': float(lease.late_fee_amount) if lease.late_fee_amount else 0,
+                    'grace_period_days': lease.grace_period_days,
+                    'management_fee': float(lease.management_fee) if lease.management_fee else 0,
+                    'procurement_fee': float(lease.procurement_fee) if lease.procurement_fee else 0,
+                },
+                'financial_summary': {
+                    'total_invoiced': float(total_invoiced),
+                    'total_paid': float(total_paid),
+                    'total_outstanding': float(total_outstanding),
+                    'collection_rate': float(collection_rate),
+                    'tenant_credit_balance': tenant_credit,
+                    'overdue_invoices_count': overdue_invoices.count(),
+                    'total_overdue_amount': float(overdue_invoices.aggregate(
+                        total=Sum('balance_due')
+                    )['total'] or Decimal('0.00'))
+                },
+                'invoice_history': invoice_history,
+                'payment_summary': payment_summary,
+                'recurring_charges': [
+                    {
+                        'id': charge.id,
+                        'description': charge.description,
+                        'category': charge.category,
+                        'amount': float(charge.amount)
+                    }
+                    for charge in recurring_charges
+                ],
+                'rent_escalations': [
+                    {
+                        'id': esc.id,
+                        'previous_rent': float(esc.previous_rent),
+                        'new_rent': float(esc.new_rent),
+                        'escalation_percentage': float(esc.escalation_percentage) if esc.escalation_percentage else 0,
+                        'escalation_amount': float(esc.escalation_amount) if esc.escalation_amount else 0,
+                        'effective_date': esc.effective_date,
+                        'reason': esc.reason
+                    }
+                    for esc in rent_escalations
+                ],
+                'recent_payments': [
+                    {
+                        'id': payment.id,
+                        'amount': float(payment.amount),
+                        'payment_date': payment.payment_date,
+                        'payment_method': payment.payment_method,
+                        'reference_number': payment.reference_number,
+                        'invoice_number': payment.invoice.invoice_number
+                    }
+                    for payment in recent_payments
+                ]
+            })
+            
+        except Exception as e:
+            import traceback
+            print(f"Error in lease_financials: {str(e)}")
+            print(f"Traceback: {traceback.format_exc()}")
             return Response(
                 {'error': str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR

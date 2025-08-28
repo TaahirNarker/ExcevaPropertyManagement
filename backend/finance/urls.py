@@ -4,7 +4,7 @@ from .views import (
     InvoiceViewSet, InvoiceTemplateViewSet, InvoicePaymentViewSet, 
     InvoiceLineItemViewSet, InvoiceAuditLogViewSet, FinanceAPIViewSet,
     PaymentAllocationViewSet, RecurringChargeViewSet, RentEscalationViewSet, SystemSettingsViewSet,
-    PaymentReconciliationViewSet
+    PaymentReconciliationViewSet, ManualPaymentViewSet
 )
 
 # Create router and register viewsets
@@ -12,6 +12,7 @@ router = DefaultRouter()
 router.register(r'invoices', InvoiceViewSet, basename='invoice')
 router.register(r'templates', InvoiceTemplateViewSet, basename='invoice-template')
 router.register(r'payments', InvoicePaymentViewSet, basename='invoice-payment')
+router.register(r'manual-payments', ManualPaymentViewSet, basename='manual-payment')
 router.register(r'line-items', InvoiceLineItemViewSet, basename='invoice-line-item')
 router.register(r'audit-logs', InvoiceAuditLogViewSet, basename='invoice-audit-log')
 router.register(r'payment-allocation', PaymentAllocationViewSet, basename='payment-allocation')
@@ -30,6 +31,7 @@ urlpatterns = [
     path('landlord-payments/', FinanceAPIViewSet.as_view({'get': 'landlord_payments'}), name='finance-landlord-payments'),
     path('supplier-payments/', FinanceAPIViewSet.as_view({'get': 'supplier_payments'}), name='finance-supplier-payments'),
     path('bank-transactions/', FinanceAPIViewSet.as_view({'get': 'bank_transactions'}), name='finance-bank-transactions'),
+    path('lease-financials/', FinanceAPIViewSet.as_view({'get': 'lease_financials'}), name='lease-financials'),
     
     # New Payment Reconciliation endpoints
     path('import-csv/', PaymentReconciliationViewSet.as_view({'post': 'import_csv'}), name='import-csv'),
