@@ -135,7 +135,7 @@ export default function SettingsPage() {
 
     try {
       console.log('Testing Strike API connection...');
-      const response = await fetch('http://localhost:8000/api/payments/exchange-rate/', {
+              const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/payments/exchange-rate/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

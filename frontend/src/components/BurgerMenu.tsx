@@ -28,7 +28,7 @@ const menuItems: MenuSection[] = [
       { title: 'Tenants & Leases', href: '/property-management/tenants' },
       { title: 'Finance & Invoicing', href: '/property-management/finance' },
       { title: 'Reports & Analytics', href: '/property-management/reports' },
-      { title: 'Admin Panel', href: 'http://localhost:8000/admin/' },
+              { title: 'Admin Panel', href: process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace('/api', '') + '/admin/' : 'http://localhost:8000/admin/' },
     ],
   },
   {

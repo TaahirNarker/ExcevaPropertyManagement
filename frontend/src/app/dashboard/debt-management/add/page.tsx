@@ -67,7 +67,7 @@ export default function AddDebtorPage() {
         requestData.assigned_to = null; // For now, set to null since we don't have user IDs
       }
       
-      const response = await fetch('http://localhost:8000/api/debt-management/debtors/', {
+              const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/debt-management/debtors/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

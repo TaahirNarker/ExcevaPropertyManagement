@@ -101,7 +101,7 @@ export default function DebtorDetailPage() {
           return;
         }
         
-        const response = await fetch(`http://localhost:8000/api/debt-management/debtors/${params.id}/`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/debt-management/debtors/${params.id}/`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -164,7 +164,7 @@ export default function DebtorDetailPage() {
         return;
       }
       
-      const response = await fetch(`http://localhost:8000/api/debt-management/debtors/${params.id}/update_status/`, {
+              const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/debt-management/debtors/${params.id}/update_status/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -194,7 +194,7 @@ export default function DebtorDetailPage() {
           return;
         }
         
-        const response = await fetch(`http://localhost:8000/api/debt-management/debtors/${params.id}/add_note/`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/debt-management/debtors/${params.id}/add_note/`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

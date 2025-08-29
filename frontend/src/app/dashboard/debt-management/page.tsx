@@ -59,7 +59,7 @@ export default function DebtManagementPage() {
           return;
         }
         
-        const response = await fetch('http://localhost:8000/api/debt-management/debtors/', {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/debt-management/debtors/`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',

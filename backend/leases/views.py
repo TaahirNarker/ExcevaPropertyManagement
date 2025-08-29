@@ -6,7 +6,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
 from .models import Lease, LeaseAttachment, LeaseNote
 from .serializers import (
-    LeaseSerializer, LeaseCreateSerializer, 
+    LeaseSerializer, LeaseCreateSerializer, LeaseUpdateSerializer,
     LeaseAttachmentSerializer, LeaseAttachmentCreateSerializer, LeaseAttachmentUpdateSerializer,
     LeaseNoteSerializer, LeaseNoteCreateSerializer
 )
@@ -57,12 +57,34 @@ class LeaseDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update or delete a lease instance.
     """
-    serializer_class = LeaseSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'id'
     
     def get_queryset(self):
         return Lease.objects.select_related('tenant__user', 'property', 'landlord').all()
+    
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return LeaseUpdateSerializer
+        return LeaseSerializer
+    
+    def update(self, request, *args, **kwargs):
+        try:
+            return super().update(request, *args, **kwargs)
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to update lease: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to delete lease: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class LeaseAttachmentListView(generics.ListCreateAPIView):

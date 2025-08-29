@@ -58,6 +58,28 @@ export interface Lease {
   attachments_count: number;
 }
 
+export interface LeaseUpdateData {
+  property?: string | number;
+  tenant?: number;
+  start_date?: string;
+  end_date?: string;
+  monthly_rent?: number;
+  deposit_amount?: number;
+  status?: string;
+  lease_type?: string;
+  rental_frequency?: string;
+  rent_due_day?: number;
+  late_fee_type?: string;
+  late_fee_percentage?: number;
+  late_fee_amount?: number;
+  grace_period_days?: number;
+  lease_duration_months?: number;
+  auto_renew?: boolean;
+  notice_period_days?: number;
+  terms?: string;
+  notes?: string;
+}
+
 export interface LeaseNote {
   id: number;
   lease: number;
@@ -77,6 +99,23 @@ export interface LeaseNoteCreate {
   title: string;
   content: string;
   note_type: string;
+}
+
+export interface PropertyChoice {
+  id: string;
+  name: string;
+  property_code: string;
+}
+
+export interface TenantChoice {
+  id: number;
+  name: string;
+  tenant_code: string;
+}
+
+export interface LeaseChoices {
+  properties: PropertyChoice[];
+  tenants: TenantChoice[];
 }
 
 class LeaseAPI {
@@ -192,7 +231,7 @@ class LeaseAPI {
     return this.handleResponse(response, 0, leaseData);
   }
 
-  async updateLease(leaseId: number, updateData: Partial<Lease>): Promise<Lease> {
+  async updateLease(leaseId: number, updateData: LeaseUpdateData): Promise<Lease> {
     const response = await fetch(`${API_BASE_URL}/leases/${leaseId}/`, {
       method: 'PATCH',
       headers: {
@@ -217,6 +256,18 @@ class LeaseAPI {
     if (!response.ok) {
       throw new Error(`Failed to delete lease: ${response.statusText}`);
     }
+  }
+
+  async getLeaseChoices(): Promise<LeaseChoices> {
+    const response = await fetch(`${API_BASE_URL}/leases/choices/`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${authService.getAccessToken()}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    return this.handleResponse(response);
   }
 
   async getLeaseAttachments(leaseId: number, params: {

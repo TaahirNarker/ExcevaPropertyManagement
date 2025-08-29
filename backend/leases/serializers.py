@@ -11,7 +11,7 @@ class LeaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lease
         fields = '__all__'
-        read_only_fields = ['tenant', 'property', 'attachments_count']
+        read_only_fields = ['attachments_count']
     
     def get_tenant(self, obj):
         try:
@@ -69,6 +69,71 @@ class LeaseSerializer(serializers.ModelSerializer):
         except Exception as e:
             print(f"Error getting attachments count for lease {obj.id}: {e}")
             return 0
+
+
+class LeaseUpdateSerializer(serializers.ModelSerializer):
+    """Serializer for updating leases - allows updating property and tenant"""
+    
+    class Meta:
+        model = Lease
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
+    
+    def validate(self, data):
+        """Custom validation for lease data"""
+        # Ensure required fields are present
+        if not data.get('property'):
+            raise serializers.ValidationError("Property is required")
+        if not data.get('tenant'):
+            raise serializers.ValidationError("Tenant is required")
+        if not data.get('start_date'):
+            raise serializers.ValidationError("Start date is required")
+        if not data.get('end_date'):
+            raise serializers.ValidationError("End date is required")
+        if not data.get('monthly_rent'):
+            raise serializers.ValidationError("Monthly rent is required")
+        
+        # Validate dates
+        if data.get('start_date') and data.get('end_date'):
+            if data['start_date'] >= data['end_date']:
+                raise serializers.ValidationError("End date must be after start date")
+        
+        # Validate amounts
+        if data.get('monthly_rent') and data['monthly_rent'] <= 0:
+            raise serializers.ValidationError("Monthly rent must be greater than 0")
+        if data.get('deposit_amount') and data['deposit_amount'] < 0:
+            raise serializers.ValidationError("Deposit cannot be negative")
+        
+        # Validate late fee fields
+        late_fee_type = data.get('late_fee_type', 'percentage')
+        if late_fee_type == 'percentage':
+            if data.get('late_fee_percentage') and (data['late_fee_percentage'] < 0 or data['late_fee_percentage'] > 100):
+                raise serializers.ValidationError("Late fee percentage must be between 0 and 100")
+        elif late_fee_type == 'amount':
+            if data.get('late_fee_amount') and data['late_fee_amount'] < 0:
+                raise serializers.ValidationError("Late fee amount cannot be negative")
+        
+        # Validate that property doesn't already have an active lease
+        if data.get('property'):
+            existing_leases = Lease.objects.filter(
+                property=data['property'],
+                status__in=['active', 'pending']
+            )
+            
+            # If this is an update, exclude the current instance
+            instance = getattr(self, 'instance', None)
+            if instance:
+                existing_leases = existing_leases.exclude(pk=instance.pk)
+            
+            if existing_leases.exists():
+                existing_lease = existing_leases.first()
+                raise serializers.ValidationError({
+                    'property': f'Property "{data["property"].name}" already has an active lease '
+                               f'(ID: {existing_lease.id}, Status: {existing_lease.status}). '
+                               f'Please terminate the existing lease before creating a new one.'
+                })
+        
+        return data
 
 
 class LeaseCreateSerializer(serializers.ModelSerializer):

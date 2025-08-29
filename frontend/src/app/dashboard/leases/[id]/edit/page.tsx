@@ -1,6 +1,6 @@
 /**
  * Lease Edit Page
- * Allows editing of lease details
+ * Allows editing of lease details including property and tenant relationships
  */
 
 'use client';
@@ -13,12 +13,15 @@ import {
   ArrowLeftIcon,
   CheckIcon,
   ExclamationTriangleIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
-import { LeaseAPI, Lease } from '@/lib/lease-api';
+import { LeaseAPI, Lease, LeaseUpdateData, LeaseChoices } from '@/lib/lease-api';
 
 const leaseAPI = new LeaseAPI();
 
 interface LeaseFormData {
+  property: string;
+  tenant: number;
   start_date: string;
   end_date: string;
   monthly_rent: number;
@@ -46,9 +49,14 @@ export default function EditLeasePage() {
   const [lease, setLease] = useState<Lease | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [choices, setChoices] = useState<LeaseChoices | null>(null);
   
   const [formData, setFormData] = useState<LeaseFormData>({
+    property: '',
+    tenant: 0,
     start_date: '',
     end_date: '',
     monthly_rent: 0,
@@ -68,37 +76,46 @@ export default function EditLeasePage() {
     notes: '',
   });
 
-  // Fetch lease data
+  // Fetch lease data and choices
   useEffect(() => {
-    const fetchLease = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        const leaseData = await leaseAPI.getLease(parseInt(leaseId));
+        
+        // Fetch lease data and choices in parallel
+        const [leaseData, choicesData] = await Promise.all([
+          leaseAPI.getLease(parseInt(leaseId)),
+          leaseAPI.getLeaseChoices()
+        ]);
+        
         setLease(leaseData);
+        setChoices(choicesData);
         
         // Populate form with lease data
         setFormData({
+          property: leaseData.property.id,
+          tenant: leaseData.tenant.id,
           start_date: leaseData.start_date,
           end_date: leaseData.end_date,
           monthly_rent: leaseData.monthly_rent,
           deposit_amount: leaseData.deposit_amount,
           status: leaseData.status,
-          lease_type: leaseData.lease_type,
-          rental_frequency: leaseData.rental_frequency,
-          rent_due_day: leaseData.rent_due_day,
-          late_fee_type: leaseData.late_fee_type,
+          lease_type: leaseData.lease_type || 'Fixed',
+          rental_frequency: leaseData.rental_frequency || 'Monthly',
+          rent_due_day: leaseData.rent_due_day || 1,
+          late_fee_type: leaseData.late_fee_type || 'percentage',
           late_fee_percentage: leaseData.late_fee_percentage || 5,
           late_fee_amount: leaseData.late_fee_amount || 0,
-          grace_period_days: leaseData.grace_period_days,
-          lease_duration_months: leaseData.lease_duration_months,
-          auto_renew: leaseData.auto_renew,
-          notice_period_days: leaseData.notice_period_days,
+          grace_period_days: leaseData.grace_period_days || 5,
+          lease_duration_months: leaseData.lease_duration_months || 12,
+          auto_renew: leaseData.auto_renew || false,
+          notice_period_days: leaseData.notice_period_days || 30,
           terms: leaseData.terms || '',
           notes: leaseData.notes || '',
         });
         
       } catch (err) {
-        console.error('Error fetching lease:', err);
+        console.error('Error fetching lease data:', err);
         setError('Failed to load lease data');
       } finally {
         setLoading(false);
@@ -106,7 +123,7 @@ export default function EditLeasePage() {
     };
 
     if (leaseId) {
-      fetchLease();
+      fetchData();
     }
   }, [leaseId]);
 
@@ -124,16 +141,25 @@ export default function EditLeasePage() {
       setSaving(true);
       
       // Convert form data to the format expected by the API
-      const updateData = {
-        ...formData,
+      const updateData: LeaseUpdateData = {
+        property: formData.property,
+        tenant: formData.tenant,
+        start_date: formData.start_date,
+        end_date: formData.end_date,
         monthly_rent: Number(formData.monthly_rent),
         deposit_amount: Number(formData.deposit_amount),
+        status: formData.status,
+        lease_type: formData.lease_type,
+        rental_frequency: formData.rental_frequency,
         rent_due_day: Number(formData.rent_due_day),
         late_fee_percentage: Number(formData.late_fee_percentage),
         late_fee_amount: Number(formData.late_fee_amount),
         grace_period_days: Number(formData.grace_period_days),
         lease_duration_months: Number(formData.lease_duration_months),
+        auto_renew: formData.auto_renew,
         notice_period_days: Number(formData.notice_period_days),
+        terms: formData.terms,
+        notes: formData.notes,
       };
 
       await leaseAPI.updateLease(parseInt(leaseId), updateData);
@@ -145,6 +171,21 @@ export default function EditLeasePage() {
       toast.error('Failed to update lease');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      await leaseAPI.deleteLease(parseInt(leaseId));
+      toast.success('Lease deleted successfully!');
+      router.push('/dashboard/leases');
+    } catch (error) {
+      console.error('Error deleting lease:', error);
+      toast.error('Failed to delete lease');
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -162,7 +203,7 @@ export default function EditLeasePage() {
     );
   }
 
-  if (error || !lease) {
+  if (error || !lease || !choices) {
     return (
       <DashboardLayout title="Edit Lease">
         <div className="flex items-center justify-center py-20">
@@ -196,18 +237,100 @@ export default function EditLeasePage() {
                 {lease.property?.name} • {lease.tenant?.name}
               </p>
             </div>
-            <button
-              onClick={handleCancel}
-              className="flex items-center space-x-2 px-4 py-2 text-muted-foreground hover:text-white transition-colors"
-            >
-              <ArrowLeftIcon className="w-4 h-4" />
-              <span>Back</span>
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center space-x-2 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
+              >
+                <TrashIcon className="w-4 h-4" />
+                <span>Delete Lease</span>
+              </button>
+              <button
+                onClick={handleCancel}
+                className="flex items-center space-x-2 px-4 py-2 text-muted-foreground hover:text-white transition-colors"
+              >
+                <ArrowLeftIcon className="w-4 h-4" />
+                <span>Back</span>
+              </button>
+            </div>
           </div>
         </div>
 
+        {/* Delete Confirmation Modal */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6 max-w-md mx-4">
+              <h3 className="text-lg font-semibold text-white mb-4">Delete Lease</h3>
+              <p className="text-muted-foreground mb-6">
+                Are you sure you want to delete this lease? This action cannot be undone.
+              </p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2 border border-white/20 text-white hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Edit Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
+            <h2 className="text-lg font-semibold text-white mb-4">Lease Relationships</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Property Selection */}
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">
+                  Property *
+                </label>
+                <select
+                  value={formData.property}
+                  onChange={(e) => handleInputChange('property', e.target.value)}
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select a property</option>
+                  {choices.properties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name} ({property.property_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tenant Selection */}
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">
+                  Tenant *
+                </label>
+                <select
+                  value={formData.tenant}
+                  onChange={(e) => handleInputChange('tenant', parseInt(e.target.value))}
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value={0}>Select a tenant</option>
+                  {choices.tenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.name} ({tenant.tenant_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
           <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
             <h2 className="text-lg font-semibold text-white mb-4">Lease Details</h2>
             
