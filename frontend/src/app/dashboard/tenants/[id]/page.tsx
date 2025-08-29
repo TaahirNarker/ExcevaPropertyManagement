@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import StatusBadge from '@/components/StatusBadge';
 import { toast } from 'sonner';
 import { tenantApi } from '@/lib/api';
-import { Tenant, LeaseHistory, Document, Communication } from '@/lib/tenant-api';
+import { Tenant, LeaseHistory, Document, Communication } from '@/lib/api';
 
 // Tenant interface is now imported from tenant-api.ts
 
@@ -52,17 +52,37 @@ export default function TenantDetailPage() {
       
       try {
         setLoading(true);
-        const [tenantData, leaseHistoryData, documentsData, communicationsData] = await Promise.all([
-          tenantApi.getTenant(tenantId),
-          tenantApi.getTenantLeaseHistory(tenantId),
-          tenantApi.getTenantDocuments(tenantId),
-          tenantApi.getTenantCommunications(tenantId)
-        ]);
+        setError(null);
         
+        // Fetch tenant data first
+        const tenantData = await tenantApi.getTenant(tenantId);
         setTenant(tenantData);
-        setLeaseHistory(leaseHistoryData);
-        setDocuments(documentsData);
-        setCommunications(communicationsData);
+        
+        // Fetch additional data in parallel, but don't fail if they error
+        try {
+          const leaseHistoryData = await tenantApi.getTenantLeaseHistory(tenantId);
+          setLeaseHistory(leaseHistoryData);
+        } catch (error) {
+          console.warn('Failed to fetch lease history:', error);
+          setLeaseHistory([]);
+        }
+        
+        try {
+          const documentsData = await tenantApi.getTenantDocuments(tenantId);
+          setDocuments(documentsData);
+        } catch (error) {
+          console.warn('Failed to fetch documents:', error);
+          setDocuments([]);
+        }
+        
+        try {
+          const communicationsData = await tenantApi.getTenantCommunications(tenantId);
+          setCommunications(communicationsData);
+        } catch (error) {
+          console.warn('Failed to fetch communications:', error);
+          setCommunications([]);
+        }
+        
       } catch (error) {
         console.error('Error fetching tenant data:', error);
         setError('Failed to load tenant data');
@@ -173,28 +193,28 @@ export default function TenantDetailPage() {
             <div>
               <h3 className="font-semibold mb-2">Personal Information</h3>
               <div className="space-y-2 text-sm">
-                <p><span className="text-muted-foreground/70">ID Number:</span> {tenant.id_number}</p>
-                <p><span className="text-muted-foreground/70">Date of Birth:</span> {tenant.date_of_birth}</p>
-                <p><span className="text-muted-foreground/70">Address:</span> {tenant.address}</p>
-                <p><span className="text-muted-foreground/70">City:</span> {tenant.city}</p>
-                <p><span className="text-muted-foreground/70">Province:</span> {tenant.province}</p>
-                <p><span className="text-muted-foreground/70">Postal Code:</span> {tenant.postal_code}</p>
+                <p><span className="text-muted-foreground/70">ID Number:</span> {tenant.id_number || 'Not provided'}</p>
+                <p><span className="text-muted-foreground/70">Date of Birth:</span> {tenant.date_of_birth || 'Not provided'}</p>
+                <p><span className="text-muted-foreground/70">Address:</span> {tenant.address || 'Not provided'}</p>
+                <p><span className="text-muted-foreground/70">City:</span> {tenant.city || 'Not provided'}</p>
+                <p><span className="text-muted-foreground/70">Province:</span> {tenant.province || 'Not provided'}</p>
+                <p><span className="text-muted-foreground/70">Postal Code:</span> {tenant.postal_code || 'Not provided'}</p>
               </div>
             </div>
             <div>
               <h3 className="font-semibold mb-2">Employment Information</h3>
               <div className="space-y-2 text-sm">
-                <p><span className="text-muted-foreground/70">Status:</span> {tenant.employment_status}</p>
-                <p><span className="text-muted-foreground/70">Employer:</span> {tenant.employer_name}</p>
-                <p><span className="text-muted-foreground/70">Monthly Income:</span> R {parseInt(tenant.monthly_income).toLocaleString()}</p>
+                <p><span className="text-muted-foreground/70">Status:</span> {tenant.employment_status || 'Not provided'}</p>
+                <p><span className="text-muted-foreground/70">Employer:</span> {tenant.employer_name || 'Not provided'}</p>
+                <p><span className="text-muted-foreground/70">Monthly Income:</span> {tenant.monthly_income ? `R ${parseInt(tenant.monthly_income).toLocaleString()}` : 'Not provided'}</p>
               </div>
             </div>
             <div>
               <h3 className="font-semibold mb-2">Emergency Contact</h3>
               <div className="space-y-2 text-sm">
-                <p><span className="text-muted-foreground/70">Name:</span> {tenant.emergency_contact_name}</p>
-                <p><span className="text-muted-foreground/70">Phone:</span> {tenant.emergency_contact_phone}</p>
-                <p><span className="text-muted-foreground/70">Relationship:</span> {tenant.emergency_contact_relationship}</p>
+                <p><span className="text-muted-foreground/70">Name:</span> {tenant.emergency_contact_name || 'Not provided'}</p>
+                <p><span className="text-muted-foreground/70">Phone:</span> {tenant.emergency_contact_phone || 'Not provided'}</p>
+                <p><span className="text-muted-foreground/70">Relationship:</span> {tenant.emergency_contact_relationship || 'Not provided'}</p>
               </div>
             </div>
           </div>
@@ -244,16 +264,38 @@ export default function TenantDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground/70">Status</p>
-                  <p className="font-medium capitalize">{tenant.status}</p>
+                  <p className="font-medium capitalize">{tenant.status || 'Unknown'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground/70">Created</p>
-                  <p className="font-medium">{new Date(tenant.created_at).toLocaleDateString()}</p>
+                  <p className="font-medium">{tenant.created_at ? new Date(tenant.created_at).toLocaleDateString() : 'Unknown'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground/70">Last Updated</p>
-                  <p className="font-medium">{new Date(tenant.updated_at).toLocaleDateString()}</p>
+                  <p className="font-medium">{tenant.updated_at ? new Date(tenant.updated_at).toLocaleDateString() : 'Unknown'}</p>
                 </div>
+              </div>
+              
+              {/* Property Assignment Section */}
+              <div className="border-t border-border pt-4">
+                <h4 className="text-sm font-medium text-foreground mb-3">Property Assignment</h4>
+                {tenant.property_name ? (
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-sm text-foreground">
+                      <span className="font-medium">Currently assigned to:</span> {tenant.property_name}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-sm text-muted-foreground mb-2">No property currently assigned</p>
+                    <button
+                      onClick={() => router.push(`/dashboard/tenants/edit/${tenantId}`)}
+                      className="text-blue-400 hover:text-blue-300 text-sm underline"
+                    >
+                      Edit tenant to assign property
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>

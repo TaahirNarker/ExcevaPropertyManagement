@@ -14,12 +14,13 @@ import {
   PhoneIcon,
   HomeIcon,
   DocumentTextIcon,
-  ArrowUpTrayIcon
+  ArrowUpTrayIcon,
+  LinkIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import StatusBadge from '@/components/StatusBadge';
-import { tenantApi } from '@/lib/api';
+import { tenantApi, propertyAPI, leaseApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 
 // Tenant type definition
@@ -30,7 +31,8 @@ interface Tenant {
   email: string;
   phone: string;
   status: 'active' | 'inactive' | 'pending';
-  property_name: string;
+  property_name?: string;
+  property_id?: string;
   created_at: string;
 }
 
@@ -55,6 +57,14 @@ export default function TenantsDashboardPage() {
     status: '',
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [tenantToDelete, setTenantToDelete] = useState<Tenant | null>(null);
+  const [propertyModalOpen, setPropertyModalOpen] = useState(false);
+  const [tenantToAssignProperty, setTenantToAssignProperty] = useState<Tenant | null>(null);
+  const [properties, setProperties] = useState<any[]>([]);
+  const [selectedProperty, setSelectedProperty] = useState<string>('');
+  const [selectedUnit, setSelectedUnit] = useState<string>('');
+  const [loadingProperties, setLoadingProperties] = useState(false);
 
   // Fetch tenants
   const fetchTenants = useCallback(async () => {
@@ -63,10 +73,22 @@ export default function TenantsDashboardPage() {
       const data = await tenantApi.list();
       
       // Handle paginated response structure
-      const tenantsArray = Array.isArray(data) ? data : (data.results || data.data || []);
+      const tenantsArray = Array.isArray(data) ? data : (data.results || []);
       
-      setTenants(tenantsArray);
-      setTotalCount(tenantsArray.length);
+      // Transform the data to match our local Tenant interface
+      const transformedTenants = tenantsArray.map((tenant: any) => ({
+        id: tenant.id,
+        tenant_code: tenant.tenant_code,
+        full_name: tenant.full_name || tenant.name || `${tenant.user?.first_name || ''} ${tenant.user?.last_name || ''}`.trim(),
+        email: tenant.email || tenant.user?.email || '',
+        phone: tenant.phone || tenant.user?.phone_number || '',
+        status: 'active' as const,
+        property_name: tenant.property_name || tenant.property?.name || '',
+        created_at: tenant.created_at || new Date().toISOString()
+      }));
+      
+      setTenants(transformedTenants);
+      setTotalCount(transformedTenants.length);
     } catch (error) {
       console.error('Error fetching tenants:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to load tenants');
@@ -109,19 +131,165 @@ export default function TenantsDashboardPage() {
     router.push(`/dashboard/tenants/edit/${tenantCode}`);
   };
 
-  const handleDeleteTenant = async (tenantCode: string) => {
-    if (!confirm('Are you sure you want to delete this tenant?')) {
-      return;
-    }
+  const handleDeleteTenant = async (tenant: Tenant) => {
+    setTenantToDelete(tenant);
+    setDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!tenantToDelete) return;
 
     try {
-              await tenantApi.delete(tenantCode);
+      await tenantApi.delete(tenantToDelete.tenant_code);
       toast.success('Tenant deleted successfully');
       fetchTenants(); // Refresh the list
     } catch (error) {
       console.error('Error deleting tenant:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to delete tenant');
+    } finally {
+      setDeleteModalOpen(false);
+      setTenantToDelete(null);
     }
+  };
+
+  const cancelDelete = () => {
+    setDeleteModalOpen(false);
+    setTenantToDelete(null);
+  };
+
+  // Fetch properties for assignment
+  const fetchProperties = useCallback(async () => {
+    try {
+      setLoadingProperties(true);
+      const data = await propertyAPI.list();
+      const propertiesArray = Array.isArray(data) ? data : (data.results || []);
+      setProperties(propertiesArray);
+    } catch (error) {
+      console.error('Error fetching properties:', error);
+      toast.error('Failed to load properties');
+    } finally {
+      setLoadingProperties(false);
+    }
+  }, []);
+
+  // Handle property assignment
+  const handleAssignProperty = (tenant: Tenant) => {
+    setTenantToAssignProperty(tenant);
+    setSelectedProperty('');
+    setSelectedUnit('');
+    setPropertyModalOpen(true);
+    fetchProperties();
+  };
+
+  const confirmPropertyAssignment = async () => {
+    if (!tenantToAssignProperty || !selectedProperty) {
+      toast.error('Please select a property');
+      return;
+    }
+
+    try {
+      // Create a lease to link tenant to property
+      const leaseData = {
+        property: selectedProperty,
+        tenant: tenantToAssignProperty.id,
+        start_date: new Date().toISOString().split('T')[0], // Today's date
+        end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1 year from today
+        monthly_rent: '1000.00', // Required field - must be a string for DecimalField
+        deposit_amount: '1000.00', // Required field - must be a string for DecimalField
+        lease_type: 'Fixed' as const,
+        rental_frequency: 'Monthly' as const,
+        rent_due_day: 1,
+        late_fee_type: 'percentage' as const,
+        late_fee_percentage: '5.00', // Must be string for DecimalField
+        late_fee_amount: '0.00', // Must be string for DecimalField
+        grace_period_days: 5,
+        management_fee: '10.00', // Must be string for DecimalField
+        procurement_fee: '0.00', // Must be string for DecimalField
+        pro_rata_amount: '0.00', // Must be string for DecimalField
+        auto_renew: false,
+        notice_period_days: 30,
+        escalation_type: 'none' as const,
+        escalation_percentage: '0.00', // Must be string for DecimalField
+        escalation_amount: '0.00', // Must be string for DecimalField
+        status: 'active' as const,
+        terms: 'Standard lease agreement for property assignment.'
+      };
+
+      // Debug: Log the lease data being sent
+      console.log('Creating lease with data:', leaseData);
+      console.log('Lease data type check:', {
+        property: typeof leaseData.property,
+        tenant: typeof leaseData.tenant,
+        start_date: typeof leaseData.start_date,
+        end_date: typeof leaseData.end_date,
+        monthly_rent: typeof leaseData.monthly_rent,
+        deposit_amount: typeof leaseData.deposit_amount,
+        lease_type: typeof leaseData.lease_type,
+        rental_frequency: typeof leaseData.rental_frequency,
+        rent_due_day: typeof leaseData.rent_due_day,
+        late_fee_type: typeof leaseData.late_fee_type,
+        late_fee_percentage: typeof leaseData.late_fee_percentage,
+        late_fee_amount: typeof leaseData.late_fee_amount,
+        grace_period_days: typeof leaseData.grace_period_days,
+        management_fee: typeof leaseData.management_fee,
+        procurement_fee: typeof leaseData.procurement_fee,
+        pro_rata_amount: typeof leaseData.pro_rata_amount,
+        auto_renew: typeof leaseData.auto_renew,
+        notice_period_days: typeof leaseData.notice_period_days,
+        escalation_type: typeof leaseData.escalation_type,
+        escalation_percentage: typeof leaseData.escalation_percentage,
+        escalation_amount: typeof leaseData.escalation_amount,
+        status: typeof leaseData.status,
+        terms: typeof leaseData.terms
+      });
+
+      // Create the lease to link tenant to property
+      await leaseApi.createLease(leaseData);
+      
+      toast.success(`Property assigned to ${tenantToAssignProperty.full_name}`);
+      setPropertyModalOpen(false);
+      setTenantToAssignProperty(null);
+      setSelectedProperty('');
+      setSelectedUnit('');
+      fetchTenants(); // Refresh the list
+    } catch (error: any) {
+      console.error('Error assigning property:', error);
+      console.error('Full error object:', JSON.stringify(error, null, 2));
+      
+      // Show more detailed error message
+      if (error.message) {
+        console.error('Error message:', error.message);
+        toast.error(`Failed to assign property: ${error.message}`);
+      } else if (error.response?.data) {
+        const errorData = error.response.data;
+        console.error('Backend error data:', errorData);
+        
+        if (typeof errorData === 'string') {
+          toast.error(`Failed to assign property: ${errorData}`);
+        } else if (errorData.detail) {
+          toast.error(`Failed to assign property: ${errorData.detail}`);
+        } else if (errorData.non_field_errors) {
+          toast.error(`Failed to assign property: ${errorData.non_field_errors.join(', ')}`);
+        } else {
+          // Show field-specific errors
+          const fieldErrors = Object.entries(errorData)
+            .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+            .join('; ');
+          console.error('Field errors:', fieldErrors);
+          toast.error(`Failed to assign property: ${fieldErrors}`);
+        }
+      } else {
+        console.error('No detailed error information available');
+        toast.error('Failed to assign property. Please try again.');
+      }
+    }
+  };
+
+  const cancelPropertyAssignment = () => {
+    setPropertyModalOpen(false);
+    setTenantToAssignProperty(null);
+    setSelectedProperty('');
+    setSelectedUnit('');
   };
 
   // Filter tenants based on search query and status
@@ -131,7 +299,7 @@ export default function TenantsDashboardPage() {
       tenant.full_name.toLowerCase().includes(searchLower) ||
       tenant.email.toLowerCase().includes(searchLower) ||
       tenant.phone.toLowerCase().includes(searchLower) ||
-      tenant.property_name.toLowerCase().includes(searchLower)
+      tenant.property_name?.toLowerCase().includes(searchLower)
     );
     
     const matchesStatus = !filters.status || tenant.status === filters.status;
@@ -423,7 +591,22 @@ export default function TenantsDashboardPage() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center text-sm text-foreground">
                             <HomeIcon className="h-4 w-4 mr-2 text-muted-foreground" />
-                            {tenant.property_name || 'Not assigned'}
+                            {tenant.property_name ? (
+                              <span className="flex items-center">
+                                {tenant.property_name}
+                              </span>
+                            ) : (
+                              <div className="flex items-center space-x-2">
+                                <span className="text-muted-foreground">Not assigned</span>
+                                <button
+                                  onClick={() => handleAssignProperty(tenant)}
+                                  className="text-blue-400 hover:text-blue-300 text-xs underline"
+                                  title="Assign property"
+                                >
+                                  Assign Property
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -449,7 +632,14 @@ export default function TenantsDashboardPage() {
                               <PencilIcon className="h-5 w-5" />
                             </button>
                             <button
-                              onClick={() => handleDeleteTenant(tenant.tenant_code)}
+                              onClick={() => handleAssignProperty(tenant)}
+                              className="text-green-400 hover:text-green-300"
+                              title="Assign property"
+                            >
+                              <LinkIcon className="h-5 w-5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTenant(tenant)}
                               className="text-red-400 hover:text-red-300"
                               title="Delete tenant"
                             >
@@ -466,6 +656,96 @@ export default function TenantsDashboardPage() {
           </div>
         </div>
       </div>
+      
+      {/* Delete Confirmation Modal */}
+      {deleteModalOpen && tenantToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-medium text-foreground mb-4">Delete Tenant</h3>
+            <p className="text-muted-foreground mb-6">
+              Are you sure you want to delete <strong>{tenantToDelete.full_name}</strong>? 
+              This action cannot be undone.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={cancelDelete}
+                className="px-4 py-2 border border-border rounded-md text-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Property Assignment Modal */}
+      {propertyModalOpen && tenantToAssignProperty && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-card border border-border rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-medium text-foreground mb-4">Assign Property to Tenant</h3>
+            <p className="text-muted-foreground mb-6">
+              Assign a property to <strong>{tenantToAssignProperty.full_name}</strong>
+            </p>
+            
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Select Property</label>
+                {loadingProperties ? (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedProperty}
+                    onChange={(e) => setSelectedProperty(e.target.value)}
+                    className="block w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Choose a property...</option>
+                    {properties.map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name} - {property.address}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Unit/Sub-property (Optional)</label>
+                <input
+                  type="text"
+                  value={selectedUnit}
+                  onChange={(e) => setSelectedUnit(e.target.value)}
+                  placeholder="e.g., Unit 101, Apartment A"
+                  className="block w-full px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={cancelPropertyAssignment}
+                className="px-4 py-2 border border-border rounded-md text-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmPropertyAssignment}
+                disabled={!selectedProperty}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Assign Property
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 } 

@@ -64,12 +64,34 @@ api.interceptors.response.use(
 // Type definitions
 export interface Tenant {
   id: string;
+  tenant_code: string;
   name: string;
   email: string;
   phone: string;
   id_number?: string;
+  date_of_birth?: string;
+  status: 'active' | 'inactive' | 'pending';
+  employment_status?: string;
+  employer_name?: string;
+  monthly_income?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relationship?: string;
+  address?: string;
+  city?: string;
+  province?: string;
+  postal_code?: string;
+  notes?: string;
+  property_name?: string;
   created_at: string;
   updated_at: string;
+  user?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone_number?: string;
+  };
 }
 
 export interface LeaseHistory {
@@ -119,12 +141,34 @@ export interface Unit {
 
 export interface Lease {
   id: string;
+  property: string;
   tenant: string;
-  unit: string;
+  landlord?: string;
+  lease_type: 'Fixed' | 'Month-to-Month' | 'Periodic';
   start_date: string;
   end_date: string;
-  rent_amount: number;
-  status: 'active' | 'ended' | 'terminated';
+  lease_duration_months?: number;
+  monthly_rent: string; // Changed from number to string for DecimalField
+  deposit_amount: string; // Changed from number to string for DecimalField
+  rental_frequency: 'Monthly' | 'Weekly' | 'Bi-weekly' | 'Quarterly' | 'Annually';
+  rent_due_day: number;
+  late_fee_type: 'percentage' | 'amount';
+  late_fee_percentage: string; // Changed from number to string for DecimalField
+  late_fee_amount: string; // Changed from number to string for DecimalField
+  grace_period_days: number;
+  management_fee: string; // Changed from number to string for DecimalField
+  procurement_fee: string; // Changed from number to string for DecimalField
+  pro_rata_amount: string; // Changed from number to string for DecimalField
+  auto_renew: boolean;
+  notice_period_days: number;
+  escalation_type: 'percentage' | 'amount' | 'none';
+  escalation_percentage: string; // Changed from number to string for DecimalField
+  escalation_amount: string; // Changed from number to string for DecimalField
+  escalation_date?: string;
+  next_escalation_date?: string;
+  invoice_date?: string;
+  status: 'active' | 'expired' | 'terminated' | 'pending' | 'draft';
+  terms?: string;
   created_at: string;
   updated_at: string;
 }
@@ -411,21 +455,39 @@ export const tenantApi = {
 
   // Additional methods for tenant details
   getTenantLeaseHistory: async (id: string): Promise<LeaseHistory[]> => {
-    const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/leases/`);
-    const data = await response.json();
-    return data.results || data;
+    try {
+      const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/leases/`);
+      const data = await response.json();
+      return data.results || data;
+    } catch (error) {
+      console.error('Error fetching tenant lease history:', error);
+      // Return empty array if lease history fails
+      return [];
+    }
   },
 
   getTenantDocuments: async (id: string): Promise<Document[]> => {
-    const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/documents/`);
-    const data = await response.json();
-    return data.results || data;
+    try {
+      const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/documents/`);
+      const data = await response.json();
+      return data.results || data;
+    } catch (error) {
+      console.error('Error fetching tenant documents:', error);
+      // Return empty array if documents fail
+      return [];
+    }
   },
 
   getTenantCommunications: async (id: string): Promise<Communication[]> => {
-    const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/communications/`);
-    const data = await response.json();
-    return data.results || data;
+    try {
+      const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/communications/`);
+      const data = await response.json();
+      return data.results || data;
+    } catch (error) {
+      console.error('Error fetching tenant communications:', error);
+      // Return empty array if communications fail
+      return [];
+    }
   },
 
   // Documents API

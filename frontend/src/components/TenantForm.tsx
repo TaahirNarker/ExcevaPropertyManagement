@@ -23,7 +23,7 @@ const tenantFormSchema = z.object({
   date_of_birth: z.string().min(1, 'Date of birth is required'),
   
   // Employment Information
-  employment_status: z.enum(['Employed', 'Self-Employed', 'Unemployed', 'Retired', 'Student']),
+  employment_status: z.enum(['employed', 'self_employed', 'unemployed', 'retired', 'student']),
   employer_name: z.string().optional(),
   monthly_income: z.string().optional(),
   
@@ -38,10 +38,6 @@ const tenantFormSchema = z.object({
   province: z.string().min(2, 'Province is required'),
   postal_code: z.string().min(4, 'Postal code is required'),
   
-  // Property Assignment
-  property_id: z.string().optional(),
-  unit_id: z.string().optional(),
-  
   // Additional Information
   notes: z.string().optional(),
 });
@@ -51,10 +47,11 @@ export type TenantFormData = z.infer<typeof tenantFormSchema>;
 interface TenantFormProps {
   initialData?: Partial<TenantFormData>;
   onSubmit: (data: TenantFormData) => void;
+  onCancel?: () => void;
   isLoading?: boolean;
 }
 
-export default function TenantForm({ initialData, onSubmit, isLoading = false }: TenantFormProps) {
+export default function TenantForm({ initialData, onSubmit, onCancel, isLoading = false }: TenantFormProps) {
   const [documents, setDocuments] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   
@@ -181,11 +178,11 @@ export default function TenantForm({ initialData, onSubmit, isLoading = false }:
               <label className="block text-sm font-medium mb-1">Employment Status</label>
               <Select {...register('employment_status')}>
                 <option value="">Select status</option>
-                <option value="Employed">Employed</option>
-                <option value="Self-Employed">Self-Employed</option>
-                <option value="Unemployed">Unemployed</option>
-                <option value="Retired">Retired</option>
-                <option value="Student">Student</option>
+                <option value="employed">Employed</option>
+                <option value="self_employed">Self Employed</option>
+                <option value="unemployed">Unemployed</option>
+                <option value="retired">Retired</option>
+                <option value="student">Student</option>
               </Select>
               {errors.employment_status && (
                 <p className="text-red-500 text-sm mt-1">{errors.employment_status.message}</p>
@@ -321,11 +318,35 @@ export default function TenantForm({ initialData, onSubmit, isLoading = false }:
         </CardContent>
       </Card>
 
+      {/* Property Assignment */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium text-foreground">Property Assignment</h3>
+            <p className="text-sm text-muted-foreground">
+              Properties are linked to tenants through lease agreements. To assign a property, 
+              you'll need to create a lease after saving the tenant information.
+            </p>
+            <div className="bg-muted/50 rounded-lg p-4">
+              <p className="text-sm text-muted-foreground">
+                <strong>Note:</strong> Property assignment is managed through the lease system. 
+                After saving this tenant, you can create a lease to link them to a specific property.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Submit Button */}
-      <div className="flex justify-end">
+      <div className="flex justify-end space-x-2">
         <Button type="submit" disabled={isLoading}>
           {isLoading ? 'Saving...' : 'Save Tenant'}
         </Button>
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading}>
+            Cancel
+          </Button>
+        )}
       </div>
     </form>
   );
