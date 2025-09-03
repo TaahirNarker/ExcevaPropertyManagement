@@ -1362,6 +1362,30 @@ export const invoiceApi = {
     return response.data;
   },
 
+  // Fetch active underpayment alerts for internal notifications
+  getUnderpaymentAlerts: async (): Promise<{
+    success: boolean;
+    count: number;
+    alerts: Array<{
+      id: number;
+      tenant: number;
+      tenant_name: string;
+      invoice: number;
+      invoice_number: string;
+      expected_amount: number;
+      actual_amount: number;
+      shortfall_amount: number;
+      alert_message: string;
+      status: string;
+      created_at: string;
+      created_at_formatted: string;
+    }>;
+    error?: string;
+  }> => {
+    const response = await api.get('/finance/payment-reconciliation/underpayment-alerts/');
+    return response.data;
+  },
+
   getPaymentStatus: async (paymentId: number): Promise<{
     success: boolean;
     payment: any;

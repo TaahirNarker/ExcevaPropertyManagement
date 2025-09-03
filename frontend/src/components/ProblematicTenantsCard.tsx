@@ -11,14 +11,21 @@ import {
   EyeIcon,
   CalendarIcon
 } from '@heroicons/react/24/outline';
-import { tenantApi, invoiceApi, leaseApi, formatCurrency, formatDate, Tenant, Invoice, Lease } from '../lib/api';
+import { tenantApi, invoiceApi, leaseApi, financeApi, Tenant, Lease } from '../lib/api';
+import PaymentAllocationModal from './PaymentAllocationModal';
 
-interface ProblematicTenant {
-  tenant: Tenant;
-  monthsBehind: number;
-  totalOwed: number;
-  lastPayment: string | null;
-  lease: Lease | null;
+interface UnderpaymentAlertItem {
+  id: number;
+  tenant: number;
+  tenant_name: string;
+  invoice: number;
+  invoice_number: string;
+  expected_amount: number;
+  actual_amount: number;
+  shortfall_amount: number;
+  alert_message: string;
+  status: string;
+  created_at: string;
 }
 
 interface ProblematicTenantsCardProps {
@@ -26,93 +33,40 @@ interface ProblematicTenantsCardProps {
 }
 
 const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewTenant }) => {
-  const [problematicTenants, setProblematicTenants] = useState<ProblematicTenant[]>([]);
+  const [alerts, setAlerts] = useState<UnderpaymentAlertItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showDetails, setShowDetails] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Modal state
+  const [isAllocationOpen, setIsAllocationOpen] = useState(false);
+  const [allocationInvoices, setAllocationInvoices] = useState<Array<{
+    id: number; invoice_number: string; due_date: string; total_amount: number; balance_due: number; status: string;
+    title?: string; tenant_name?: string; property_name?: string;
+  }>>([]);
+  const [allocationPaymentType, setAllocationPaymentType] = useState<'manual' | 'bank'>('bank');
+  const [allocationPaymentAmount, setAllocationPaymentAmount] = useState(0);
+  const [allocationPaymentId, setAllocationPaymentId] = useState<number | undefined>(undefined);
+  const [allocationBankTxnId, setAllocationBankTxnId] = useState<number | undefined>(undefined);
+
   useEffect(() => {
-    fetchProblematicTenants();
+    fetchAlerts();
   }, []);
 
-  const fetchProblematicTenants = async () => {
+  const fetchAlerts = async () => {
     try {
       setIsLoading(true);
       setError(null);
-
-      // Fetch all data
-      const [tenants, invoices, leases] = await Promise.all([
-        tenantApi.getAll(),
-        invoiceApi.getAll(),
-        leaseApi.getAll()
-      ]);
-
-      const currentDate = new Date();
-      const threeMonthsAgo = new Date();
-      threeMonthsAgo.setMonth(currentDate.getMonth() - 3);
-
-      const problematic: ProblematicTenant[] = [];
-
-      for (const tenant of tenants) {
-        // Get tenant's invoices
-        const tenantInvoices = invoices.filter(inv => 
-          inv.tenant && inv.tenant.id === tenant.id
-        );
-
-        // Calculate overdue invoices
-        const overdueInvoices = tenantInvoices.filter(inv => {
-          const dueDate = new Date(inv.due_date);
-          return dueDate < currentDate && inv.paid_amount < inv.total_amount;
-        });
-
-        if (overdueInvoices.length === 0) continue;
-
-        // Calculate months behind based on oldest unpaid invoice
-        const oldestOverdue = overdueInvoices.reduce((oldest, current) => 
-          new Date(current.due_date) < new Date(oldest.due_date) ? current : oldest
-        );
-
-        const monthsBehind = Math.floor(
-          (currentDate.getTime() - new Date(oldestOverdue.due_date).getTime()) / 
-          (1000 * 60 * 60 * 24 * 30)
-        );
-
-        // Only include if more than 3 months behind
-        if (monthsBehind >= 3) {
-          const totalOwed = overdueInvoices.reduce(
-            (sum, inv) => sum + (inv.total_amount - inv.paid_amount), 
-            0
-          );
-
-          // Find last payment date
-          const paidInvoices = tenantInvoices.filter(inv => inv.paid_amount > 0);
-          const lastPayment = paidInvoices.length > 0 ? 
-            paidInvoices.reduce((latest, current) => 
-              new Date(current.created_at) > new Date(latest.created_at) ? current : latest
-            ).created_at : null;
-
-          // Find active lease
-          const activeLease = leases.find(lease => 
-            lease.tenant.id === tenant.id && lease.status === 'active'
-          );
-
-          problematic.push({
-            tenant,
-            monthsBehind,
-            totalOwed,
-            lastPayment,
-            lease: activeLease || null
-          });
-        }
+      const result = await invoiceApi.getUnderpaymentAlerts();
+      if (result.success) {
+        setAlerts(result.alerts || []);
+      } else {
+        setAlerts([]);
       }
 
-      // Sort by months behind (most problematic first)
-      problematic.sort((a, b) => b.monthsBehind - a.monthsBehind);
-      setProblematicTenants(problematic);
-
     } catch (err) {
-      console.error('Error fetching problematic tenants:', err);
-      setError('Failed to load problematic tenants data');
+      console.error('Error fetching underpayment alerts:', err);
+      setError('Failed to load underpayment alerts');
     } finally {
       setIsLoading(false);
     }
@@ -124,6 +78,60 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
     } else {
       // Default navigation to tenant management
       window.location.href = `/property-management/tenants`;
+    }
+  };
+
+  // Open allocation modal for a specific alert
+  const openAllocationForAlert = async (alert: UnderpaymentAlertItem) => {
+    try {
+      // Find active lease for tenant
+      const leasesResp = await leaseApi.getLeases({ tenant: alert.tenant, status: 'active', page_size: 100 });
+      const activeLease = (leasesResp.results || []).find((l: any) => l.status === 'active');
+      if (!activeLease) {
+        setError('No active lease found for tenant');
+        return;
+      }
+
+      const leaseId = Number(activeLease.id);
+      const financials = await financeApi.getLeaseFinancials(leaseId);
+
+      // Build invoices list from invoice_history (which contains balance_due)
+      const invoices = (financials.invoice_history || [])
+        .filter((inv: any) => inv.balance_due && inv.balance_due > 0)
+        .map((inv: any) => ({
+          id: inv.id,
+          invoice_number: inv.invoice_number,
+          due_date: inv.due_date,
+          total_amount: inv.total_amount,
+          balance_due: inv.balance_due,
+          status: inv.status,
+          title: inv.title,
+          tenant_name: financials?.lease_info ? undefined : undefined,
+          property_name: undefined,
+        }));
+
+      setAllocationInvoices(invoices);
+      setAllocationPaymentAmount(alert.actual_amount);
+      // Use bank vs manual based on presence of IDs
+      if ((alert as any).bank_transaction) {
+        setAllocationPaymentType('bank');
+        setAllocationBankTxnId((alert as any).bank_transaction);
+        setAllocationPaymentId(undefined);
+      } else if ((alert as any).payment) {
+        setAllocationPaymentType('manual');
+        setAllocationPaymentId((alert as any).payment);
+        setAllocationBankTxnId(undefined);
+      } else {
+        // Fallback to bank type without id
+        setAllocationPaymentType('bank');
+        setAllocationPaymentId(undefined);
+        setAllocationBankTxnId(undefined);
+      }
+
+      setIsAllocationOpen(true);
+    } catch (e) {
+      console.error('Failed to prepare allocation modal', e);
+      setError('Failed to prepare allocation');
     }
   };
 
@@ -163,11 +171,11 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
               <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Problematic Tenants</p>
             </div>
-            <p className="text-2xl font-bold text-red-600">{problematicTenants.length}</p>
+            <p className="text-2xl font-bold text-red-600">{alerts.length}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {problematicTenants.length === 0 
-                ? 'All tenants up to date' 
-                : `${problematicTenants.length} tenant${problematicTenants.length > 1 ? 's' : ''} 3+ months behind`
+              {alerts.length === 0 
+                ? 'No underpayment alerts' 
+                : `${alerts.length} underpayment alert${alerts.length > 1 ? 's' : ''}`
               }
             </p>
           </div>
@@ -178,17 +186,17 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
         </div>
 
         {/* Mini Chart Preview */}
-        {problematicTenants.length > 0 && (
+        {alerts.length > 0 && (
           <div className="mt-4 h-16 flex items-end space-x-1">
-            {problematicTenants.slice(0, 8).map((tenant, index) => (
+            {alerts.slice(0, 8).map((a) => (
               <div
-                key={tenant.tenant.id}
+                key={a.id}
                 className="flex-1 bg-red-400 dark:bg-red-500 rounded-t opacity-60 hover:opacity-100 transition-opacity"
                 style={{
-                  height: `${Math.min((tenant.monthsBehind / 12) * 100, 100)}%`,
+                  height: `70%`,
                   minHeight: '8px'
                 }}
-                title={`${tenant.tenant.name}: ${tenant.monthsBehind} months behind`}
+                title={`${a.tenant_name}: shortfall R${a.shortfall_amount.toFixed(2)}`}
               />
             ))}
           </div>
@@ -196,7 +204,7 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
       </div>
 
       {/* Detailed View */}
-      {showDetails && problematicTenants.length > 0 && (
+      {showDetails && alerts.length > 0 && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
@@ -205,7 +213,7 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
         >
           <div className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Tenants Behind on Rent</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Underpayment Alerts</h3>
               <button
                 onClick={() => window.location.href = '/property-management/tenants'}
                 className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
@@ -217,19 +225,16 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
             {/* Chart */}
             <div className="mb-6">
               <div className="flex items-end h-32 space-x-2 bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                {problematicTenants.map((tenant, index) => (
+                {alerts.map((a) => (
                   <div key={tenant.tenant.id} className="flex flex-col items-center flex-1">
                     <div
                       className="w-full bg-gradient-to-t from-red-500 to-red-400 rounded-t cursor-pointer hover:from-red-600 hover:to-red-500 transition-colors"
-                      style={{
-                        height: `${Math.min((tenant.monthsBehind / 12) * 100, 90)}%`,
-                        minHeight: '20px'
-                      }}
-                      onClick={() => handleViewTenant(tenant.tenant.id)}
-                      title={`${tenant.tenant.name}: ${tenant.monthsBehind} months, ${formatCurrency(tenant.totalOwed)} owed`}
+                      style={{ height: `60%`, minHeight: '20px' }}
+                      onClick={() => openAllocationForAlert(a)}
+                      title={`${a.tenant_name}: shortfall R${a.shortfall_amount.toFixed(2)}`}
                     />
                     <span className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate w-full text-center">
-                      {tenant.monthsBehind}m
+                      R{a.shortfall_amount.toFixed(0)}
                     </span>
                   </div>
                 ))}
@@ -241,11 +246,11 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
 
             {/* Tenant List */}
             <div className="space-y-3">
-              {problematicTenants.slice(0, 5).map((tenantData) => (
+              {alerts.slice(0, 5).map((a) => (
                 <div
-                  key={tenantData.tenant.id}
+                  key={a.id}
                   className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer"
-                  onClick={() => handleViewTenant(tenantData.tenant.id)}
+                  onClick={() => openAllocationForAlert(a)}
                 >
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center">
@@ -253,41 +258,33 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
                     </div>
                     <div>
                       <h4 className="font-medium text-gray-900 dark:text-white">
-                        {tenantData.tenant.name}
+                        {a.tenant_name}
                       </h4>
                       <div className="flex items-center space-x-4 text-xs text-gray-600 dark:text-gray-400">
-                        <span className="flex items-center">
-                          <CalendarIcon className="h-3 w-3 mr-1" />
-                          {tenantData.monthsBehind} months behind
-                        </span>
-                        <span>{formatCurrency(tenantData.totalOwed)} owed</span>
+                        <span>Invoice #{a.invoice_number}</span>
+                        <span>Shortfall: R{a.shortfall_amount.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      tenantData.monthsBehind >= 6 
+                      a.shortfall_amount >= 1 
                         ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
                         : 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300'
                     }`}>
-                      {tenantData.monthsBehind >= 6 ? 'Critical' : 'Warning'}
+                      {a.shortfall_amount >= 1 ? 'Active' : 'Info'}
                     </div>
-                    {tenantData.lastPayment && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        Last: {formatDate(tenantData.lastPayment)}
-                      </p>
-                    )}
                   </div>
                 </div>
               ))}
               
-              {problematicTenants.length > 5 && (
+              {alerts.length > 5 && (
                 <div className="text-center pt-2">
                   <button
                     onClick={() => window.location.href = '/property-management/tenants'}
                     className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
                   >
-                    View {problematicTenants.length - 5} more problematic tenant{problematicTenants.length - 5 > 1 ? 's' : ''}
+                    View {alerts.length - 5} more alerts
                   </button>
                 </div>
               )}
@@ -297,7 +294,7 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
       )}
 
       {/* Empty State */}
-      {problematicTenants.length === 0 && (
+      {alerts.length === 0 && (
         <div className="p-6 text-center border-t border-gray-200 dark:border-gray-700">
           <div className="text-green-500 mb-2">
             <svg className="h-8 w-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -305,10 +302,25 @@ const ProblematicTenantsCard: React.FC<ProblematicTenantsCardProps> = ({ onViewT
             </svg>
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            All tenants are up to date with their rent payments
+            No active underpayment alerts
           </p>
         </div>
       )}
+
+      {/* Allocation Modal */}
+      <PaymentAllocationModal
+        isOpen={isAllocationOpen}
+        onClose={() => setIsAllocationOpen(false)}
+        onSuccess={() => {
+          setIsAllocationOpen(false);
+          fetchAlerts();
+        }}
+        paymentId={allocationPaymentId}
+        bankTransactionId={allocationBankTxnId}
+        paymentType={allocationPaymentType}
+        paymentAmount={allocationPaymentAmount}
+        invoices={allocationInvoices}
+      />
     </div>
   );
 };

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog,
     TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings,
-    BankTransaction, ManualPayment, PaymentAllocation, Adjustment, CSVImportBatch
+    BankTransaction, ManualPayment, PaymentAllocation, Adjustment, CSVImportBatch, UnderpaymentAlert
 )
 from tenants.models import Tenant
 from leases.models import Lease
@@ -475,6 +475,31 @@ class CSVImportBatchSerializer(serializers.ModelSerializer):
             'id', 'batch_id', 'import_date', 'status_display',
             'imported_by_name', 'created_at', 'updated_at'
         ]
+
+
+class UnderpaymentAlertSerializer(serializers.ModelSerializer):
+    """Serializer for underpayment alerts"""
+    tenant_name = serializers.CharField(source='tenant.name', read_only=True)
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    created_at_formatted = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UnderpaymentAlert
+        fields = [
+            'id', 'tenant', 'tenant_name', 'invoice', 'invoice_number',
+            'expected_amount', 'actual_amount', 'shortfall_amount',
+            'alert_message', 'status', 'status_display', 'created_at',
+            'created_at_formatted',
+            'payment', 'bank_transaction'
+        ]
+        read_only_fields = [
+            'id', 'tenant_name', 'invoice_number', 'status_display', 'created_at',
+            'created_at_formatted'
+        ]
+
+    def get_created_at_formatted(self, obj):
+        return obj.created_at.strftime('%Y-%m-%d %H:%M:%S')
 
 
 class CSVImportRequestSerializer(serializers.Serializer):

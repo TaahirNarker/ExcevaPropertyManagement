@@ -23,7 +23,7 @@ from .serializers import (
     InvoiceDraftSerializer, PaymentAllocationSerializer, InvoiceNavigationSerializer, SystemSettingsSerializer,
     # Payment reconciliation serializers
     CSVImportRequestSerializer, ManualPaymentRequestSerializer, PaymentAllocationRequestSerializer,
-    AdjustmentRequestSerializer, BankTransactionSerializer, ManualPaymentSerializer
+    AdjustmentRequestSerializer, BankTransactionSerializer, ManualPaymentSerializer, UnderpaymentAlertSerializer
 )
 from .services import (
     InvoiceGenerationService, PaymentAllocationService, RentEscalationService,
@@ -1886,4 +1886,23 @@ class PaymentReconciliationViewSet(viewsets.ViewSet):
             return Response({
                 'success': False,
                 'error': f'Failed to fetch payment status: {str(e)}'
+            }, status=500)
+
+    @action(detail=False, methods=['get'], url_path='underpayment-alerts')
+    def underpayment_alerts(self, request):
+        """
+        List active underpayment alerts for internal notification center.
+        """
+        try:
+            alerts = UnderpaymentAlert.objects.filter(status='active').select_related('tenant', 'invoice')
+            serializer = UnderpaymentAlertSerializer(alerts, many=True)
+            return Response({
+                'success': True,
+                'count': alerts.count(),
+                'alerts': serializer.data
+            }, status=200)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'Failed to fetch underpayment alerts: {str(e)}'
             }, status=500)

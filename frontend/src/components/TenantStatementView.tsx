@@ -13,7 +13,7 @@ import {
   ClockIcon,
   InformationCircleIcon
 } from '@heroicons/react/24/outline';
-import { financeApi } from '@/lib/api';
+import { invoiceApi } from '@/lib/api';
 
 interface TenantStatementItem {
   id: number;
@@ -78,13 +78,45 @@ const TenantStatementView: React.FC<TenantStatementViewProps> = ({
     setError(null);
 
     try {
-      const result = await financeApi.getTenantStatement(tenantId, {
-        start_date: dateRange.start_date,
-        end_date: dateRange.end_date,
-        types: selectedTypes
-      });
-      
-      setStatement(result);
+      const res = await invoiceApi.getTenantStatement(
+        tenantId,
+        dateRange.start_date,
+        dateRange.end_date
+      );
+
+      if (!res.success) throw new Error(res.error || 'Failed to load statement');
+
+      // Map backend response shape to TenantStatement UI model
+      const mapped: TenantStatement = {
+        tenant_id: res.tenant.id,
+        tenant_name: res.tenant.name,
+        tenant_code: String(res.tenant.id),
+        property_name: res.lease?.unit || 'N/A',
+        unit_number: res.lease?.unit || 'N/A',
+        statement_period: {
+          start_date: String(res.statement_period.start_date),
+          end_date: String(res.statement_period.end_date),
+        },
+        summary: {
+          opening_balance: Number(res.summary.opening_balance || 0),
+          total_invoiced: Number(res.summary.total_charges || 0),
+          total_payments: Number(res.summary.total_payments || 0),
+          total_adjustments: Number(res.summary.total_adjustments || 0),
+          closing_balance: Number(res.summary.closing_balance || 0),
+        },
+        items: (res.transactions || []).map((t: any, idx: number) => ({
+          id: idx + 1,
+          date: String(t.date),
+          type: t.type,
+          description: t.description,
+          invoice_number: t.reference,
+          amount: Number(t.charges || 0) - Number(t.payments || 0) + Number(t.adjustments || 0),
+          balance: Number(t.balance || 0),
+          status: t.type === 'invoice' ? 'sent' : 'completed',
+        })),
+      };
+
+      setStatement(mapped);
     } catch (err: any) {
       setError(err.message || 'Failed to load tenant statement');
     } finally {

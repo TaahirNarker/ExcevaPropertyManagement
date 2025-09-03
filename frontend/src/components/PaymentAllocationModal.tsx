@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon, CheckCircleIcon, PlusIcon, TrashIcon, CurrencyDollarIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
-import { financeApi } from '@/lib/api';
+import { invoiceApi } from '@/lib/api';
 
 interface Invoice {
   id: number;
@@ -208,17 +208,15 @@ const PaymentAllocationModal: React.FC<PaymentAllocationModalProps> = ({
 
     try {
       const remainingAmount = getRemainingAmount();
-      const result = await financeApi.allocatePayment({
+      const result = await invoiceApi.allocatePayment({
         payment_id: paymentId,
         bank_transaction_id: bankTransactionId,
-        payment_type: paymentType,
         allocations: allocations.map(alloc => ({
           invoice_id: alloc.invoice_id,
           amount: alloc.amount,
           notes: alloc.notes
         })),
         create_credit: createCredit || remainingAmount > 0,
-        credit_amount: createCredit ? creditAmount : remainingAmount,
         notes: notes || undefined,
       });
       

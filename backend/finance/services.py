@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import List, Dict, Optional, Tuple
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Sum
 
 from .models import (
     Invoice, InvoiceLineItem, InvoiceDraft, SystemSettings,
@@ -214,14 +215,34 @@ class InvoiceGenerationService:
                 invoice_type='regular'
             )
             
-            # Add base rent
-            line_items = [{
+            # Start assembling line items
+            line_items = []
+
+            # 0) Arrears carry-over from previous invoices (unpaid amounts prior to this month)
+            from .models import Invoice as InvoiceModel
+            previous_unpaid = InvoiceModel.objects.filter(
+                lease=lease,
+                status__in=['sent', 'overdue', 'partially_paid'],
+                balance_due__gt=0,
+                due_date__lt=billing_start
+            ).aggregate(total_due=Sum('balance_due'))['total_due'] or Decimal('0.00')
+            if previous_unpaid > 0:
+                line_items.append({
+                    'description': 'Arrears carry-over',
+                    'category': 'Arrears',
+                    'quantity': 1,
+                    'unit_price': previous_unpaid,
+                    'total': previous_unpaid
+                })
+
+            # 1) Base rent for the month
+            line_items.append({
                 'description': 'Monthly Rent',
                 'category': 'Rent',
                 'quantity': 1,
                 'unit_price': lease.monthly_rent,
                 'total': lease.monthly_rent
-            }]
+            })
             
             # Add recurring charges
             for charge in lease.recurring_charges.filter(is_active=True):
@@ -258,6 +279,13 @@ class InvoiceGenerationService:
             # Calculate totals and save
             invoice.calculate_totals()
             invoice.save()
+
+            # 3) If tenant has credit balance, apply it to this invoice automatically
+            try:
+                self._apply_credit_balance_to_invoice(invoice, user)
+            except Exception:
+                # Do not fail invoice creation if credit application fails
+                pass
             
             return invoice
     
@@ -278,26 +306,31 @@ class InvoiceGenerationService:
         
         with transaction.atomic():
             # Create invoice
+            # Create invoice using correct field names present on Invoice model
             invoice = Invoice.objects.create(
                 lease=lease,
                 property=lease.property,
                 tenant=lease.tenant,
                 landlord=lease.landlord,
                 issue_date=timezone.now().date(),
-                due_date=billing_end + timedelta(days=lease.payment_terms),
-                billing_start=billing_start,
-                billing_end=billing_end,
+                # Fallback to rent_due_day if payment terms not available on Lease
+                due_date=billing_end,
+                billing_period_start=billing_start,
+                billing_period_end=billing_end,
                 invoice_type=invoice_type,
-                created_by=user
+                created_by=user,
+                status='draft'
             )
             
             # Add base rent line item
+            # Add base rent line item (InvoiceLineItem has no line_type; use category)
             InvoiceLineItem.objects.create(
                 invoice=invoice,
                 description=f"Rent for {billing_start.strftime('%B %Y')}",
+                category='Rent',
                 quantity=1,
                 unit_price=lease.monthly_rent,
-                line_type='rent'
+                total=lease.monthly_rent
             )
             
             # Add recurring charges
@@ -310,9 +343,10 @@ class InvoiceGenerationService:
                 InvoiceLineItem.objects.create(
                     invoice=invoice,
                     description=charge.description,
+                    category=charge.category,
                     quantity=1,
                     unit_price=charge.amount,
-                    line_type='recurring_charge'
+                    total=charge.amount
                 )
             
             # Calculate totals
@@ -1184,7 +1218,7 @@ class PaymentReconciliationService:
             allocations_created = []
             
             for allocation in allocation_data['allocations']:
-                from .models import Invoice, PaymentAllocation
+                from .models import Invoice, PaymentAllocation, InvoicePayment
                 invoice = Invoice.objects.get(id=allocation['invoice_id'])
                 amount = allocation['amount']
                 
@@ -1199,29 +1233,38 @@ class PaymentReconciliationService:
                     allocated_by=allocated_by
                 )
                 
-                # Update invoice
-                invoice.amount_paid += amount
-                invoice.balance_due = invoice.total_amount - invoice.amount_paid
+                # Create a corresponding payment record so totals recalc correctly
+                payment_method = 'cash' if (source_type == 'payment' and getattr(payment_source, 'payment_method', None) == 'cash') else 'bank_transfer'
+                payment_date = getattr(payment_source, 'payment_date', None) or getattr(payment_source, 'transaction_date', timezone.now().date())
+                InvoicePayment.objects.create(
+                    invoice=invoice,
+                    tenant=invoice.tenant,
+                    amount=amount,
+                    allocated_amount=amount,
+                    payment_date=payment_date,
+                    payment_method=payment_method,
+                    reference_number=getattr(payment_source, 'reference_number', '') or getattr(payment_source, 'id', ''),
+                    notes=allocation.get('notes', ''),
+                    recorded_by=allocated_by,
+                    is_overpayment=False
+                )
                 
-                if invoice.balance_due <= 0:
-                    invoice.status = 'paid'
-                else:
-                    invoice.status = 'partially_paid'
-                
+                # Recalculate invoice totals via model method
+                invoice.calculate_totals()
                 invoice.save()
                 
                 allocations_created.append(payment_allocation)
                 total_allocated += amount
             
-            # Update payment source status
+            # Update payment source status and optionally create credit for remainder
             if source_type == 'payment':
                 payment_source.allocated_amount = total_allocated
                 payment_source.remaining_amount = payment_source.amount - total_allocated
                 
+                # Valid statuses are: pending | allocated | cancelled
+                # Keep 'pending' if there is a remaining amount; mark 'allocated' when fully consumed
                 if payment_source.remaining_amount <= 0:
                     payment_source.status = 'allocated'
-                else:
-                    payment_source.status = 'partially_allocated'
                 
                 payment_source.save()
             
@@ -1229,6 +1272,29 @@ class PaymentReconciliationService:
                 payment_source.manually_allocated = True
                 payment_source.allocation_notes = allocation_data.get('notes', '')
                 payment_source.save()
+
+            # Handle optional credit creation for any remainder
+            try:
+                create_credit = allocation_data.get('create_credit', False)
+                if create_credit:
+                    # Determine remaining amount
+                    if source_type == 'payment':
+                        remaining = payment_source.amount - total_allocated
+                        tenant = payment_source.lease.tenant
+                    else:
+                        remaining = payment_source.amount - total_allocated
+                        # Prefer matched lease tenant if available
+                        tenant = payment_source.matched_lease.tenant if payment_source.matched_lease else None
+                    if tenant and remaining and remaining > 0:
+                        credit_balance, _ = TenantCreditBalance.objects.get_or_create(
+                            tenant=tenant,
+                            defaults={'balance': Decimal('0.00')}
+                        )
+                        credit_balance.balance += Decimal(str(remaining))
+                        credit_balance.save()
+            except Exception:
+                # Non-fatal; continue returning allocation results
+                pass
             
             return {
                 'success': True,

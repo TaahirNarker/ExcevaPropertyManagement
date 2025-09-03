@@ -98,15 +98,24 @@ class Invoice(models.Model):
         if not self.invoice_number:
             self.invoice_number = self.generate_invoice_number()
         
-        # Calculate totals
+        # Avoid accessing reverse relations before PK exists
+        if not self.pk:
+            super().save(*args, **kwargs)
+            return
+        
+        # Calculate totals when updating an existing invoice
         self.calculate_totals()
         super().save(*args, **kwargs)
     
     def calculate_totals(self):
         """Calculate subtotal, tax, total amounts, and balance due"""
         self.subtotal = sum(item.total for item in self.line_items.all())
-        self.tax_amount = self.subtotal * (self.tax_rate / 100)
-        self.total_amount = self.subtotal + self.tax_amount
+        # Ensure Decimal-safe arithmetic for tax calculations
+        from decimal import Decimal as _D
+        subtotal_dec = _D(str(self.subtotal))
+        tax_rate_dec = _D(str(self.tax_rate))
+        self.tax_amount = subtotal_dec * (tax_rate_dec / _D('100'))
+        self.total_amount = subtotal_dec + self.tax_amount
         
         # Calculate amount paid and balance due
         self.amount_paid = sum(payment.amount for payment in self.payments.all())

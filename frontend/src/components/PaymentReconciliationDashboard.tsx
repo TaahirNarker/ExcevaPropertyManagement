@@ -14,7 +14,7 @@ import {
   PencilIcon,
   ArrowPathIcon
 } from '@heroicons/react/24/outline';
-import { financeApi } from '@/lib/api';
+import { invoiceApi } from '@/lib/api';
 
 interface UnmatchedPayment {
   id: number;
@@ -68,17 +68,46 @@ const PaymentReconciliationDashboard: React.FC<PaymentReconciliationDashboardPro
     setError(null);
 
     try {
-      const [paymentsResult, statsResult] = await Promise.all([
-        financeApi.getUnmatchedPayments({
-          search: searchTerm || undefined,
-          status: statusFilter !== 'all' ? statusFilter : undefined,
-          type: typeFilter !== 'all' ? typeFilter : undefined
-        }),
-        financeApi.getReconciliationStats()
-      ]);
-      
-      setUnmatchedPayments(paymentsResult.payments || []);
-      setStats(statsResult);
+      const paymentsResult = await invoiceApi.getUnmatchedPayments();
+
+      // Map backend shape to UI shape
+      const mapped: UnmatchedPayment[] = [
+        ...(paymentsResult.unmatched_transactions || []).map((t: any) => ({
+          id: t.id,
+          type: 'bank',
+          date: t.transaction_date,
+          amount: t.amount,
+          description: t.description,
+          reference: t.reference_number,
+          bank_name: t.bank_account,
+          status: 'review_required',
+        })),
+        ...(paymentsResult.pending_payments || []).map((p: any) => ({
+          id: p.id,
+          type: 'manual',
+          date: p.payment_date,
+          amount: p.amount,
+          description: `${p.payment_method} payment - ${p.tenant_name}`,
+          reference: p.reference_number,
+          status: 'unmatched',
+        }))
+      ];
+
+      setUnmatchedPayments(mapped);
+
+      // Derive simple stats from counts
+      const total = mapped.length;
+      const manual_review = (paymentsResult.unmatched_transactions || []).length;
+      const unmatched = (paymentsResult.pending_payments || []).length;
+      setStats({
+        total_payments: total,
+        auto_reconciled: 0,
+        manual_review,
+        unmatched,
+        total_amount: mapped.reduce((s, x) => s + (x.amount || 0), 0),
+        reconciled_amount: 0,
+        unmatched_amount: mapped.reduce((s, x) => s + (x.amount || 0), 0),
+      });
     } catch (err: any) {
       setError(err.message || 'Failed to load reconciliation data');
     } finally {
