@@ -36,6 +36,129 @@ class TenantListCreateView(generics.ListCreateAPIView):
             return TenantCreateUpdateSerializer
         return TenantListSerializer
     
+    def create(self, request, *args, **kwargs):
+        """Override create to handle property assignment"""
+        try:
+            # Get property assignment data from request
+            property_id = request.data.get('property_id')
+            lease_data = request.data.get('lease_data', {})
+            
+            # Create the tenant first
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            tenant = serializer.save()
+            
+            # If property is assigned, create a lease
+            if property_id:
+                try:
+                    from properties.models import Property
+                    from leases.models import Lease
+                    from django.utils.dateparse import parse_date
+                    
+                    # Get the property
+                    property_obj = Property.objects.get(id=property_id)
+                    
+                    # Check permissions
+                    user = request.user
+                    if not user.is_staff:
+                        if property_obj.owner != user and property_obj.property_manager != user:
+                            return Response(
+                                {'error': 'You do not have permission to assign tenants to this property'}, 
+                                status=status.HTTP_403_FORBIDDEN
+                            )
+                    
+                    # Check if property is available
+                    if property_obj.status != 'vacant':
+                        return Response(
+                            {'error': f'Property is not available for assignment. Current status: {property_obj.get_status_display()}'}, 
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    # Get lease data with defaults
+                    start_date = lease_data.get('start_date')
+                    end_date = lease_data.get('end_date')
+                    monthly_rent = lease_data.get('monthly_rent', property_obj.monthly_rental_amount)
+                    deposit_amount = lease_data.get('deposit_amount', 0)
+                    
+                    # Validate required lease fields
+                    if not all([start_date, end_date, monthly_rent]):
+                        return Response(
+                            {'error': 'Missing required lease fields: start_date, end_date, monthly_rent'}, 
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    # Parse dates
+                    try:
+                        start_date = parse_date(start_date)
+                        end_date = parse_date(end_date)
+                        if not start_date or not end_date:
+                            raise ValueError("Invalid date format")
+                    except (ValueError, TypeError):
+                        return Response(
+                            {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    # Validate dates
+                    if start_date >= end_date:
+                        return Response(
+                            {'error': 'Start date must be before end date'}, 
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    
+                    # Create the lease
+                    lease = Lease.objects.create(
+                        property=property_obj,
+                        tenant=tenant,
+                        start_date=start_date,
+                        end_date=end_date,
+                        monthly_rent=monthly_rent,
+                        deposit_amount=deposit_amount,
+                        status='pending',
+                        lease_type='Fixed'
+                    )
+                    
+                    # Update property status to occupied
+                    property_obj.status = 'occupied'
+                    property_obj.save()
+                    
+                    # Return success response with lease info
+                    response_data = serializer.data
+                    response_data['lease_created'] = True
+                    response_data['lease_id'] = lease.id
+                    response_data['property_assigned'] = {
+                        'id': property_obj.id,
+                        'property_code': property_obj.property_code,
+                        'name': property_obj.name,
+                        'status': property_obj.status
+                    }
+                    
+                    return Response(response_data, status=status.HTTP_201_CREATED)
+                    
+                except Property.DoesNotExist:
+                    return Response(
+                        {'error': 'Property not found'}, 
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                except Exception as e:
+                    return Response(
+                        {'error': f'Failed to create lease: {str(e)}'}, 
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+            
+            # Return success response without lease info
+            response_data = serializer.data
+            response_data['lease_created'] = False
+            response_data['property_assigned'] = None
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to create tenant: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
     def list(self, request, *args, **kwargs):
         try:
             return super().list(request, *args, **kwargs)

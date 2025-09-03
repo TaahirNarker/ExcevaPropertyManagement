@@ -10,11 +10,13 @@ import { useRouter } from 'next/navigation';
 import { 
   PlusIcon, 
   MagnifyingGlassIcon,
-  AdjustmentsHorizontalIcon
+  AdjustmentsHorizontalIcon,
+  UserPlusIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import { propertyAPI } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
+import TenantAssignmentModal from '@/components/TenantAssignmentModal';
 import toast from 'react-hot-toast';
 
 // Local types
@@ -107,6 +109,8 @@ export default function PropertiesDashboardPage() {
     provinces: [],
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [showTenantAssignmentModal, setShowTenantAssignmentModal] = useState(false);
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
 
   // Fetch properties
   const fetchProperties = useCallback(async () => {
@@ -166,15 +170,40 @@ export default function PropertiesDashboardPage() {
     router.push('/dashboard/properties/add');
   };
 
+  const handleOpenTenantAssignmentModal = (property: Property) => {
+    setSelectedProperty(property);
+    setShowTenantAssignmentModal(true);
+  };
+
+  const handleCloseTenantAssignmentModal = () => {
+    setShowTenantAssignmentModal(false);
+    setSelectedProperty(null);
+  };
+
+  const handleTenantAssignmentSuccess = () => {
+    // Refresh properties to show updated status
+    fetchProperties();
+    handleCloseTenantAssignmentModal();
+  };
+
 
 
   // Render occupancy status
-  const renderOccupancyStatus = (occupancy: Property['occupancy_info']) => {
+  const renderOccupancyStatus = (occupancy: Property['occupancy_info'], property: Property) => {
     if (occupancy.status === 'Vacant') {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/20 text-green-400 border border-green-500/30">
-          Vacant
-        </span>
+        <div className="space-y-1">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-900/20 text-green-400 border border-green-500/30">
+            Vacant
+          </span>
+          <button
+            onClick={() => handleOpenTenantAssignmentModal(property)}
+            className="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-400 hover:text-blue-300 hover:bg-blue-900/20 rounded border border-blue-500/30 hover:border-blue-400/50 transition-colors"
+          >
+            <UserPlusIcon className="h-3 w-3 mr-1" />
+            Assign Tenant
+          </button>
+        </div>
       );
     } else if (occupancy.status === 'Occupied' && occupancy.details) {
       return (
@@ -445,9 +474,9 @@ export default function PropertiesDashboardPage() {
                         <div className="text-sm text-foreground">{property.city}</div>
                         <div className="text-sm text-muted-foreground">{property.province_display}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {renderOccupancyStatus(property.occupancy_info)}
-                      </td>
+                                              <td className="px-6 py-4 whitespace-nowrap">
+                          {renderOccupancyStatus(property.occupancy_info, property)}
+                        </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {property.is_parent_property && property.sub_properties_summary ? (
                           <div className="text-sm">
@@ -532,6 +561,17 @@ export default function PropertiesDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Tenant Assignment Modal */}
+      {showTenantAssignmentModal && selectedProperty && (
+        <TenantAssignmentModal
+          isOpen={showTenantAssignmentModal}
+          onClose={handleCloseTenantAssignmentModal}
+          propertyCode={selectedProperty.property_code}
+          propertyName={selectedProperty.name}
+          onSuccess={handleTenantAssignmentSuccess}
+        />
+      )}
     </DashboardLayout>
   );
 } 

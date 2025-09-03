@@ -1019,6 +1019,14 @@ export const financeApi = {
     const response = await api.get('/finance/cash-flow/', { params: { period } });
     return response.data;
   },
+
+  // Lease financials for a specific lease
+  getLeaseFinancials: async (leaseId: number): Promise<any> => {
+    const response = await api.get('/finance/lease-financials/', {
+      params: { lease_id: leaseId }
+    });
+    return response.data;
+  },
 };
 
 // Invoice API - Complete implementation

@@ -1132,7 +1132,7 @@ class FinanceAPIViewSet(viewsets.ViewSet):
         """Get bank transactions for reconciliation"""
         try:
             # Get query parameters
-            status = request.query_params.get('status', 'pending')
+            transaction_status = request.query_params.get('status', 'pending')
             bank_name = request.query_params.get('bank_name', '')
             date_from = request.query_params.get('date_from', '')
             date_to = request.query_params.get('date_to', '')
@@ -1140,8 +1140,8 @@ class FinanceAPIViewSet(viewsets.ViewSet):
             # Build query
             queryset = BankTransaction.objects.all()
             
-            if status:
-                queryset = queryset.filter(status=status)
+            if transaction_status:
+                queryset = queryset.filter(status=transaction_status)
             if bank_name:
                 queryset = queryset.filter(bank_name__icontains=bank_name)
             if date_from:

@@ -480,6 +480,102 @@ class PropertiesAPI {
 
     return this.handleResponse(response);
   }
+
+  /**
+   * Get vacant properties for tenant assignment
+   */
+  async getVacantPropertiesForTenantAssignment(search?: string): Promise<{
+    count: number;
+    results: Array<{
+      id: string;
+      property_code: string;
+      name: string;
+      display_name: string;
+      property_type: string;
+      property_type_display: string;
+      full_address: string;
+      monthly_rental_amount?: number;
+      bedrooms?: number;
+      bathrooms?: number;
+      square_meters?: number;
+      city: string;
+      province: string;
+      primary_image?: string;
+    }>;
+  }> {
+    const url = new URL(`${this.baseUrl}/properties/vacant/for-tenant-assignment/`);
+    if (search) {
+      url.searchParams.append('search', search);
+    }
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    return this.handleResponse(response);
+  }
+
+  /**
+   * Get available tenants for property assignment
+   */
+  async getAvailableTenants(propertyCode: string): Promise<{
+    property: {
+      id: string;
+      property_code: string;
+      name: string;
+      monthly_rental_amount?: number;
+    };
+    available_tenants: Array<{
+      id: number;
+      tenant_code: string;
+      name: string;
+      email: string;
+      phone: string;
+      employment_status: string;
+      monthly_income?: string;
+    }>;
+  }> {
+    const response = await fetch(`${this.baseUrl}/properties/${propertyCode}/assign-tenant/`, {
+      method: 'GET',
+      headers: this.getAuthHeaders(),
+    });
+
+    return this.handleResponse(response);
+  }
+
+  /**
+   * Assign a tenant to a property
+   */
+  async assignTenant(
+    propertyCode: string, 
+    data: {
+      tenant_id: number;
+      start_date: string;
+      end_date: string;
+      monthly_rent: number;
+      deposit_amount?: number;
+    }
+  ): Promise<{
+    message: string;
+    lease_id: number;
+    property_status: string;
+    lease_details: {
+      id: number;
+      start_date: string;
+      end_date: string;
+      monthly_rent: number;
+      status: string;
+    };
+  }> {
+    const response = await fetch(`${this.baseUrl}/properties/${propertyCode}/assign-tenant/`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(data),
+    });
+
+    return this.handleResponse(response);
+  }
 }
 
 // Create and export a singleton instance

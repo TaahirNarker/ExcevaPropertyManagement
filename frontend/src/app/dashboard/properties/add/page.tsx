@@ -11,11 +11,12 @@ import {
   MapPinIcon,
   PlusIcon,
   MinusIcon,
-  EllipsisHorizontalIcon
+  EllipsisHorizontalIcon,
+  UserIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import { propertiesAPI } from '@/lib/properties-api';
-import { landlordApi } from '@/lib/api';
+import { landlordApi, tenantApi } from '@/lib/api';
 import DashboardLayout from '@/components/DashboardLayout';
 import toast from 'react-hot-toast';
 
@@ -26,6 +27,17 @@ interface BankAccount {
   account_number: string;
   branch_code: string;
   account_type: string;
+}
+
+// Tenant interface
+interface Tenant {
+  id: string;
+  tenant_code: string;
+  name: string;
+  email: string;
+  phone: string;
+  employment_status: string;
+  monthly_income?: string;
 }
 
 // Property form interface
@@ -44,6 +56,7 @@ interface PropertyFormData {
   landlord_id: string;
   bank_account_id: string;
   parent_property?: string; // For sub-properties
+  tenant_id?: string; // For tenant assignment
 }
 
 // Landlord interface
@@ -123,7 +136,12 @@ export default function AddPropertyPage() {
   const [showParentPropertyDropdown, setShowParentPropertyDropdown] = useState(false);
   const [parentPropertySearch, setParentPropertySearch] = useState('');
   
-
+  // Tenant selection state
+  const [availableTenants, setAvailableTenants] = useState<Tenant[]>([]);
+  const [loadingTenants, setLoadingTenants] = useState(false);
+  const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+  const [tenantSearch, setTenantSearch] = useState('');
+  const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
 
   // Fetch landlords
   const fetchLandlords = async () => {
@@ -136,6 +154,36 @@ export default function AddPropertyPage() {
       setLandlords([]);
     } finally {
       setLoadingLandlords(false);
+    }
+  };
+
+  // Fetch available tenants (tenants without active leases)
+  const fetchAvailableTenants = async () => {
+    try {
+      setLoadingTenants(true);
+      // Get all tenants first
+      const allTenants = await tenantApi.getAll();
+      
+      // Filter to only active tenants (we'll filter out those with active leases later)
+      const activeTenants = allTenants.filter((tenant: any) => tenant.status === 'active');
+      
+      // Transform to match our interface
+      const transformedTenants = activeTenants.map((tenant: any) => ({
+        id: tenant.id,
+        tenant_code: tenant.tenant_code,
+        name: tenant.full_name || tenant.name || `${tenant.user?.first_name || ''} ${tenant.user?.last_name || ''}`.trim(),
+        email: tenant.email || tenant.user?.email || '',
+        phone: tenant.phone || tenant.user?.phone_number || '',
+        employment_status: tenant.employment_status || 'Unknown',
+        monthly_income: tenant.monthly_income ? tenant.monthly_income.toString() : undefined
+      }));
+      
+      setAvailableTenants(transformedTenants);
+    } catch (error) {
+      console.error('Error fetching available tenants:', error);
+      setAvailableTenants([]);
+    } finally {
+      setLoadingTenants(false);
     }
   };
 
@@ -160,6 +208,7 @@ export default function AddPropertyPage() {
     if (isAuthenticated) {
       fetchLandlords();
       fetchParentProperties();
+      fetchAvailableTenants();
     }
   }, [isAuthenticated]);
 
@@ -169,6 +218,7 @@ export default function AddPropertyPage() {
       const target = event.target as Element;
       if (!target.closest('.autocomplete-container')) {
         setShowParentPropertyDropdown(false);
+        setShowTenantDropdown(false);
       }
     };
 
@@ -228,6 +278,13 @@ export default function AddPropertyPage() {
     property.full_address.toLowerCase().includes(parentPropertySearch.toLowerCase())
   );
 
+  // Filter tenants based on search
+  const filteredTenants = availableTenants.filter(tenant =>
+    tenant.name.toLowerCase().includes(tenantSearch.toLowerCase()) ||
+    tenant.tenant_code.toLowerCase().includes(tenantSearch.toLowerCase()) ||
+    tenant.email.toLowerCase().includes(tenantSearch.toLowerCase())
+  );
+
   // Handle parent property selection
   const handleParentPropertySelect = (property: ParentProperty) => {
     setFormData(prev => ({ ...prev, parent_property: property.id }));
@@ -235,7 +292,20 @@ export default function AddPropertyPage() {
     setShowParentPropertyDropdown(false);
   };
 
+  // Handle tenant selection
+  const handleTenantSelect = (tenant: Tenant) => {
+    setSelectedTenant(tenant);
+    setFormData(prev => ({ ...prev, tenant_id: tenant.id }));
+    setTenantSearch(tenant.name);
+    setShowTenantDropdown(false);
+  };
 
+  // Clear tenant selection
+  const clearTenantSelection = () => {
+    setSelectedTenant(null);
+    setFormData(prev => ({ ...prev, tenant_id: undefined }));
+    setTenantSearch('');
+  };
 
   // Removed map functionality for now
 
@@ -291,6 +361,26 @@ export default function AddPropertyPage() {
 
       const newProperty = await propertiesAPI.createProperty(apiData);
       console.log('Created property:', newProperty); // Debug log
+      
+      // If a tenant was selected, assign them to the property
+      if (formData.tenant_id && selectedTenant) {
+        try {
+          // Create a lease for the tenant
+          const leaseData = {
+            tenant_id: parseInt(formData.tenant_id),
+            start_date: new Date().toISOString().split('T')[0], // Today's date
+            end_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1 year from now
+            monthly_rent: newProperty.monthly_rental_amount || 0,
+            deposit_amount: 0
+          };
+          
+          await propertiesAPI.assignTenant(newProperty.property_code, leaseData);
+          toast.success(`Tenant ${selectedTenant.name} assigned to property ${newProperty.property_code}`);
+        } catch (error) {
+          console.error('Error assigning tenant:', error);
+          toast.error('Property created but failed to assign tenant. You can assign them later.');
+        }
+      }
       
       // Show success message with property code
       if (newProperty.property_code) {
@@ -459,7 +549,99 @@ export default function AddPropertyPage() {
             </div>
           </div>
 
-
+          {/* Tenant Assignment Section */}
+          <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <UserIcon className="h-5 w-5 text-primary" />
+                <h3 className="text-lg font-semibold text-foreground">Tenant Assignment (Optional)</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Select a tenant to occupy this property. This will create a lease agreement and set the property status to occupied.
+              </p>
+              
+              <div className="relative autocomplete-container" style={{ position: 'relative', zIndex: 1000 }}>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={tenantSearch}
+                    onChange={(e) => {
+                      setTenantSearch(e.target.value);
+                      setShowTenantDropdown(true);
+                    }}
+                    onFocus={() => setShowTenantDropdown(true)}
+                    placeholder={loadingTenants ? 'Loading tenants...' : 'Search for a tenant...'}
+                    disabled={loadingTenants}
+                    className="block w-full px-3 py-2 pr-10 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 bg-background text-foreground placeholder-muted-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <div className="absolute right-3 top-2.5 h-5 w-5 text-muted-foreground">
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+                
+                {showTenantDropdown && filteredTenants.length > 0 && (
+                  <div className="autocomplete-dropdown w-full mt-1 bg-card/95 backdrop-blur-lg border border-border rounded-md shadow-xl max-h-60 overflow-auto">
+                    {filteredTenants.map(tenant => (
+                      <div
+                        key={tenant.id}
+                        onClick={() => handleTenantSelect(tenant)}
+                        className="px-4 py-2 hover:bg-primary/10 cursor-pointer border-b border-border/50 last:border-b-0 transition-colors"
+                      >
+                        <div className="font-medium text-foreground">{tenant.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {tenant.tenant_code} • {tenant.email} • {tenant.employment_status}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {showTenantDropdown && filteredTenants.length === 0 && tenantSearch && !loadingTenants && (
+                  <div className="autocomplete-dropdown w-full mt-1 bg-card/95 backdrop-blur-lg border border-border rounded-md shadow-xl">
+                    <div className="px-4 py-2 text-muted-foreground">No tenants found</div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Selected Tenant Display */}
+              {selectedTenant && (
+                <div className="bg-primary/10 border border-primary/20 rounded-md p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center">
+                        <UserIcon className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-foreground">{selectedTenant.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {selectedTenant.tenant_code} • {selectedTenant.email}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {selectedTenant.employment_status}
+                          {selectedTenant.monthly_income && ` • R${selectedTenant.monthly_income}/month`}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearTenantSelection}
+                      className="text-red-500 hover:text-red-700 text-sm font-medium"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {availableTenants.length === 0 && !loadingTenants && (
+                <div className="text-sm text-muted-foreground">
+                  No available tenants found. All active tenants may already be assigned to properties.
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Property Details */}
           <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">

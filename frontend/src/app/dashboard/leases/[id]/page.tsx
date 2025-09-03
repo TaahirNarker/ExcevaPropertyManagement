@@ -42,6 +42,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { leaseAPI } from '@/lib/lease-api';
+import { authService } from '@/lib/auth';
+import { financeApi } from '@/lib/api';
 
 // Enhanced Lease interface
 interface Lease {
@@ -185,34 +188,23 @@ export default function LeaseDetailPage() {
   const [financialsLoading, setFinancialsLoading] = useState(false);
 
   useEffect(() => {
-    // Simulate loading real data for now
-    setTimeout(() => {
-      setLoading(false);
-      setLease({
-        id: parseInt(leaseId || '1'),
-        property: { 
-          id: '1', 
-          property_code: 'PROP001',
-          name: 'Sample Property', 
-          address: '123 Main Street, City, State'
-        },
-        tenant: { 
-          id: 1, 
-          tenant_code: 'TEN001',
-          name: 'Sample Tenant', 
-          email: 'tenant@example.com' 
-        },
-        start_date: '2024-01-01',
-        end_date: '2024-12-31',
-        monthly_rent: 1500.00,
-        deposit_amount: 1500.00,
-        status: 'active',
-        terms: 'Standard lease terms apply',
-        created_at: '2024-01-01T00:00:00Z',
-        updated_at: '2024-01-01T00:00:00Z',
-        attachments_count: 0
-      });
-    }, 1000);
+    const fetchLeaseDetails = async () => {
+      try {
+        setLoading(true);
+        const data = await leaseAPI.getLease(parseInt(leaseId || '1'));
+        setLease(data);
+      } catch (error) {
+        setError('Failed to fetch lease details');
+        console.error('Error fetching lease details:', error);
+        toast.error('Failed to load lease details');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (leaseId) {
+      fetchLeaseDetails();
+    }
   }, [leaseId]);
 
   useEffect(() => {
@@ -223,149 +215,16 @@ export default function LeaseDetailPage() {
 
   const fetchLeaseFinancials = async () => {
     if (!lease) return;
-    
     setFinancialsLoading(true);
     try {
-      // For now, we'll use mock data. In production, this would call the API
-      // const response = await fetch(`/api/finance/lease-financials/?lease_id=${lease.id}`);
-      // const data = await response.json();
-      
-      // Mock financial data
-      const mockFinancials: LeaseFinancials = {
-        lease_info: {
-          id: lease.id,
-          monthly_rent: lease.monthly_rent,
-          deposit_amount: lease.deposit_amount,
-          rental_frequency: 'Monthly',
-          rent_due_day: 1,
-          late_fee_type: 'percentage',
-          late_fee_percentage: 5.0,
-          late_fee_amount: 0,
-          grace_period_days: 5,
-          management_fee: 10.0,
-          procurement_fee: 2.5,
-        },
-        financial_summary: {
-          total_invoiced: 13500.00,
-          total_paid: 12000.00,
-          total_outstanding: 1500.00,
-          collection_rate: 88.89,
-          tenant_credit_balance: 250.00,
-          overdue_invoices_count: 1,
-          total_overdue_amount: 1500.00,
-        },
-        invoice_history: [
-          {
-            id: 1,
-            invoice_number: 'INV-2024-000001',
-            issue_date: '2024-01-01',
-            due_date: '2024-01-31',
-            status: 'paid',
-            total_amount: 1500.00,
-            amount_paid: 1500.00,
-            balance_due: 0.00,
-            billing_period_start: '2024-01-01',
-            billing_period_end: '2024-01-31',
-            is_overdue: false,
-            days_overdue: 0,
-            line_items: [
-              {
-                description: 'Monthly Rent',
-                category: 'Rent',
-                quantity: 1,
-                unit_price: 1500.00,
-                total: 1500.00
-              }
-            ],
-            payments: [
-              {
-                amount: 1500.00,
-                payment_date: '2024-01-15',
-                payment_method: 'bank_transfer',
-                reference_number: 'TXN001'
-              }
-            ],
-            adjustments: []
-          },
-          {
-            id: 2,
-            invoice_number: 'INV-2024-000002',
-            issue_date: '2024-02-01',
-            due_date: '2024-02-29',
-            status: 'overdue',
-            total_amount: 1500.00,
-            amount_paid: 0.00,
-            balance_due: 1500.00,
-            billing_period_start: '2024-02-01',
-            billing_period_end: '2024-02-29',
-            is_overdue: true,
-            days_overdue: 15,
-            line_items: [
-              {
-                description: 'Monthly Rent',
-                category: 'Rent',
-                quantity: 1,
-                unit_price: 1500.00,
-                total: 1500.00
-              }
-            ],
-            payments: [],
-            adjustments: []
-          }
-        ],
-        payment_summary: [
-          {
-            month: '2024-01',
-            total_payments: 1500.00,
-            payment_count: 1
-          },
-          {
-            month: '2023-12',
-            total_payments: 1500.00,
-            payment_count: 1
-          }
-        ],
-        recurring_charges: [
-          {
-            id: 1,
-            description: 'Water & Sewer',
-            category: 'utility',
-            amount: 75.00
-          },
-          {
-            id: 2,
-            description: 'Parking Space',
-            category: 'parking',
-            amount: 50.00
-          }
-        ],
-        rent_escalations: [
-          {
-            id: 1,
-            previous_rent: 1400.00,
-            new_rent: 1500.00,
-            escalation_percentage: 7.14,
-            escalation_amount: 100.00,
-            effective_date: '2024-01-01',
-            reason: 'Annual Escalation'
-          }
-        ],
-        recent_payments: [
-          {
-            id: 1,
-            amount: 1500.00,
-            payment_date: '2024-01-15',
-            payment_method: 'bank_transfer',
-            reference_number: 'TXN001',
-            invoice_number: 'INV-2024-000001'
-          }
-        ]
-      };
-      
-      setFinancials(mockFinancials);
-    } catch (error) {
-      console.error('Error fetching lease financials:', error);
-      toast.error('Failed to load financial data');
+      const data = await financeApi.getLeaseFinancials(lease.id);
+      console.log('Lease financials loaded', { leaseId: lease.id, hasData: !!data });
+      setFinancials(data);
+    } catch (error: any) {
+      console.error('Lease financials error', { leaseId: lease?.id, error });
+      const status = error?.response?.status || error?.status || 'unknown';
+      toast.error(`Failed to load financial data (${status})`);
+      setFinancials(null);
     } finally {
       setFinancialsLoading(false);
     }
@@ -620,7 +479,7 @@ export default function LeaseDetailPage() {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-white">Financial Management</h2>
-                <Button onClick={() => router.push(`/dashboard/leases/${lease.id}/invoice`)}>
+                <Button onClick={() => router.push(`/dashboard/leases/${lease.id}/invoice/create`)}>
                   <PlusIcon className="h-4 w-4 mr-2" />
                   Create Invoice
                 </Button>

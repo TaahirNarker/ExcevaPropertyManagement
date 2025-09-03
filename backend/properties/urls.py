@@ -22,6 +22,7 @@ urlpatterns = [
     
     # Property utility endpoints
     path('choices/all/', views.property_choices, name='property-choices'),
+    path('vacant/for-tenant-assignment/', views.vacant_properties_for_tenant_assignment, name='vacant-properties-for-tenant-assignment'),
     path('<str:property_code>/summary/', views.property_summary, name='property-summary'),
     
     # Property images
@@ -32,4 +33,7 @@ urlpatterns = [
     path('<str:property_code>/documents/', views.PropertyDocumentListView.as_view(), name='property-documents'),
     path('<str:property_code>/documents/<int:pk>/', views.PropertyDocumentDetailView.as_view(), name='property-document-detail'),
     path('branding/logo/', BrandingLogoUploadView.as_view(), name='branding-logo-upload'),
+    
+    # Property tenant assignment
+    path('<str:property_code>/assign-tenant/', views.PropertyTenantAssignmentView.as_view(), name='property-assign-tenant'),
 ] 

@@ -22,6 +22,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
+import PropertySearchDropdown from '@/components/PropertySearchDropdown';
 import { tenantApi } from '@/lib/api';
 import toast from 'react-hot-toast';
 
@@ -78,6 +79,13 @@ export default function AddTenantPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedProperty, setSelectedProperty] = useState<any>(null);
+  const [leaseData, setLeaseData] = useState({
+    start_date: '',
+    end_date: '',
+    monthly_rent: '',
+    deposit_amount: '',
+  });
   
   const { register, handleSubmit, formState: { errors }, watch, setValue, getValues } = useForm<TenantFormData>({
     resolver: zodResolver(tenantFormSchema),
@@ -177,7 +185,16 @@ export default function AddTenantPage() {
         emergency_contact_name: 'Emergency Contact',
         emergency_contact_phone: data.phones[0]?.number || '',
         emergency_contact_relationship: 'Family',
-        status: 'pending' as const
+        status: 'pending' as const,
+        
+        // Property assignment data
+        property_id: selectedProperty?.id || null,
+        lease_data: selectedProperty ? {
+          start_date: leaseData.start_date,
+          end_date: leaseData.end_date,
+          monthly_rent: leaseData.monthly_rent ? parseFloat(leaseData.monthly_rent) : selectedProperty.monthly_rental_amount,
+          deposit_amount: leaseData.deposit_amount ? parseFloat(leaseData.deposit_amount) : 0,
+        } : null,
       };
 
       // Validate required fields are not empty
@@ -186,6 +203,11 @@ export default function AddTenantPage() {
       
       if (missingFields.length > 0) {
         throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+      }
+
+      // Validate lease data if property is selected
+      if (selectedProperty && (!leaseData.start_date || !leaseData.end_date)) {
+        throw new Error('Please provide start and end dates for the lease');
       }
 
       // Debug: Log the data being sent
@@ -205,11 +227,20 @@ export default function AddTenantPage() {
         emergency_contact_name: typeof tenantData.emergency_contact_name,
         emergency_contact_phone: typeof tenantData.emergency_contact_phone,
         emergency_contact_relationship: typeof tenantData.emergency_contact_relationship,
-        status: typeof tenantData.status
+        status: typeof tenantData.status,
+        property_id: typeof tenantData.property_id,
+        lease_data: typeof tenantData.lease_data,
       });
 
-      await tenantApi.createTenant(tenantData);
-      toast.success('Tenant created successfully!');
+      const response = await tenantApi.createTenant(tenantData);
+      
+      // Show success message based on whether property was assigned
+      if (response.lease_created) {
+        toast.success(`Tenant created successfully and assigned to ${response.property_assigned?.name}!`);
+      } else {
+        toast.success('Tenant created successfully!');
+      }
+      
       router.push('/dashboard/tenants');
     } catch (error: any) {
       console.error('Error creating tenant:', error);
@@ -649,6 +680,74 @@ export default function AddTenantPage() {
                 <div className="text-center py-8 text-muted-foreground/70">
                   <BanknotesIcon className="mx-auto h-12 w-12 mb-2" />
                   <p>No bank accounts added yet</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Property Assignment */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-lg border border-white/20 p-6">
+            <h3 className="text-lg font-medium text-white mb-4 flex items-center">
+              <DocumentTextIcon className="h-5 w-5 mr-2" />
+              Property Assignment (Optional)
+            </h3>
+            <p className="text-sm text-gray-300 mb-4">
+              Optionally assign this tenant to a vacant property. This will create a lease agreement automatically.
+            </p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">Select Property</label>
+                <PropertySearchDropdown
+                  value={selectedProperty}
+                  onChange={setSelectedProperty}
+                  placeholder="Search for a vacant property..."
+                />
+              </div>
+              
+              {selectedProperty && (
+                <div className="border border-white/10 rounded-md p-4 bg-white/5">
+                  <h4 className="text-sm font-medium text-white mb-3">Lease Details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={leaseData.start_date}
+                        onChange={(e) => setLeaseData(prev => ({ ...prev, start_date: e.target.value }))}
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={leaseData.end_date}
+                        onChange={(e) => setLeaseData(prev => ({ ...prev, end_date: e.target.value }))}
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">Monthly Rent</label>
+                      <input
+                        type="number"
+                        value={leaseData.monthly_rent}
+                        onChange={(e) => setLeaseData(prev => ({ ...prev, monthly_rent: e.target.value }))}
+                        placeholder={selectedProperty.monthly_rental_amount ? `Default: ${selectedProperty.monthly_rental_amount}` : "Enter monthly rent"}
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">Deposit Amount</label>
+                      <input
+                        type="number"
+                        value={leaseData.deposit_amount}
+                        onChange={(e) => setLeaseData(prev => ({ ...prev, deposit_amount: e.target.value }))}
+                        placeholder="Optional deposit amount"
+                        className="block w-full px-3 py-2 border border-white/20 rounded-md bg-white/10 backdrop-blur-sm text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

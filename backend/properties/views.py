@@ -537,3 +537,249 @@ class BrandingLogoUploadView(APIView):
                 f.write(chunk)
         logo_url = request.build_absolute_uri(settings.MEDIA_URL + 'branding/logo.png')
         return Response({'logo_url': logo_url})
+
+
+class PropertyTenantAssignmentView(APIView):
+    """
+    View for assigning tenants to properties
+    Creates a lease agreement and updates property status
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request, property_code):
+        """Assign a tenant to a property by creating a lease"""
+        try:
+            # Get the property
+            property_obj = get_object_or_404(Property, property_code=property_code)
+            
+            # Check permissions
+            user = request.user
+            if not user.is_staff:
+                if property_obj.owner != user and property_obj.property_manager != user:
+                    return Response(
+                        {'error': 'You do not have permission to assign tenants to this property'}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            # Check if property is available for assignment
+            if property_obj.status != 'vacant':
+                return Response(
+                    {'error': f'Property is not available for assignment. Current status: {property_obj.get_status_display()}'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get request data
+            tenant_id = request.data.get('tenant_id')
+            start_date = request.data.get('start_date')
+            end_date = request.data.get('end_date')
+            monthly_rent = request.data.get('monthly_rent')
+            deposit_amount = request.data.get('deposit_amount', 0)
+            
+            # Validate required fields
+            if not all([tenant_id, start_date, end_date, monthly_rent]):
+                return Response(
+                    {'error': 'Missing required fields: tenant_id, start_date, end_date, monthly_rent'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Import here to avoid circular imports
+            from tenants.models import Tenant
+            from leases.models import Lease
+            from django.utils.dateparse import parse_date
+            
+            # Get the tenant
+            try:
+                tenant = Tenant.objects.get(id=tenant_id)
+            except Tenant.DoesNotExist:
+                return Response(
+                    {'error': 'Tenant not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Parse dates
+            try:
+                start_date = parse_date(start_date)
+                end_date = parse_date(end_date)
+                if not start_date or not end_date:
+                    raise ValueError("Invalid date format")
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate dates
+            if start_date >= end_date:
+                return Response(
+                    {'error': 'Start date must be before end date'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if tenant already has an active lease
+            existing_lease = Lease.objects.filter(
+                tenant=tenant,
+                status__in=['active', 'pending']
+            ).first()
+            
+            if existing_lease:
+                return Response(
+                    {'error': f'Tenant already has an active lease at {existing_lease.property.name}'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create the lease
+            lease = Lease.objects.create(
+                property=property_obj,
+                tenant=tenant,
+                start_date=start_date,
+                end_date=end_date,
+                monthly_rent=monthly_rent,
+                deposit_amount=deposit_amount,
+                status='pending',
+                lease_type='Fixed'
+            )
+            
+            # Update property status to occupied
+            property_obj.status = 'occupied'
+            property_obj.save()
+            
+            # Return success response
+            return Response({
+                'message': f'Tenant {tenant.user.get_full_name()} successfully assigned to {property_obj.name}',
+                'lease_id': lease.id,
+                'property_status': property_obj.status,
+                'lease_details': {
+                    'id': lease.id,
+                    'start_date': lease.start_date,
+                    'end_date': lease.end_date,
+                    'monthly_rent': lease.monthly_rent,
+                    'status': lease.status
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to assign tenant: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def get(self, request, property_code):
+        """Get available tenants for assignment"""
+        try:
+            # Get the property
+            property_obj = get_object_or_404(Property, property_code=property_code)
+            
+            # Check permissions
+            user = request.user
+            if not user.is_staff:
+                if property_obj.owner != user and property_obj.property_manager != user:
+                    return Response(
+                        {'error': 'You do not have permission to view this property'}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            # Import here to avoid circular imports
+            from tenants.models import Tenant
+            from leases.models import Lease
+            
+            # Get all active tenants who don't have active leases
+            active_tenants = Tenant.objects.filter(status='active')
+            
+            # Filter out tenants who already have active leases
+            tenants_with_leases = Lease.objects.filter(
+                status__in=['active', 'pending']
+            ).values_list('tenant_id', flat=True)
+            
+            available_tenants = active_tenants.exclude(id__in=tenants_with_leases)
+            
+            # Serialize available tenants
+            tenant_data = []
+            for tenant in available_tenants:
+                tenant_data.append({
+                    'id': tenant.id,
+                    'tenant_code': tenant.tenant_code,
+                    'name': tenant.user.get_full_name(),
+                    'email': tenant.email,
+                    'phone': tenant.phone,
+                    'employment_status': tenant.employment_status,
+                    'monthly_income': str(tenant.monthly_income) if tenant.monthly_income else None
+                })
+            
+            return Response({
+                'property': {
+                    'id': property_obj.id,
+                    'property_code': property_obj.property_code,
+                    'name': property_obj.name,
+                    'monthly_rental_amount': property_obj.monthly_rental_amount
+                },
+                'available_tenants': tenant_data
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to get available tenants: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def vacant_properties_for_tenant_assignment(request):
+    """Get vacant properties for tenant assignment during tenant creation"""
+    try:
+        user = request.user
+        
+        # Get vacant properties accessible to the user
+        if user.is_staff:
+            vacant_properties = Property.objects.filter(status='vacant', is_active=True)
+        else:
+            vacant_properties = Property.objects.filter(
+                Q(owner=user) | Q(property_manager=user),
+                status='vacant',
+                is_active=True
+            )
+        
+        # Apply search filter if provided
+        search = request.query_params.get('search', '').strip()
+        if search:
+            vacant_properties = vacant_properties.filter(
+                Q(name__icontains=search) |
+                Q(property_code__icontains=search) |
+                Q(street_address__icontains=search) |
+                Q(city__icontains=search) |
+                Q(suburb__icontains=search)
+            )
+        
+        # Select related to optimize queries
+        vacant_properties = vacant_properties.select_related('owner', 'property_manager')
+        
+        # Serialize properties
+        properties_data = []
+        for property_obj in vacant_properties:
+            properties_data.append({
+                'id': property_obj.id,
+                'property_code': property_obj.property_code,
+                'name': property_obj.name,
+                'display_name': property_obj.display_name,
+                'property_type': property_obj.property_type,
+                'property_type_display': property_obj.get_property_type_display(),
+                'full_address': property_obj.full_address,
+                'monthly_rental_amount': property_obj.monthly_rental_amount,
+                'bedrooms': property_obj.bedrooms,
+                'bathrooms': property_obj.bathrooms,
+                'square_meters': property_obj.square_meters,
+                'city': property_obj.city,
+                'province': property_obj.province,
+                'primary_image': property_obj.primary_image,
+            })
+        
+        return Response({
+            'count': len(properties_data),
+            'results': properties_data
+        })
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to get vacant properties: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

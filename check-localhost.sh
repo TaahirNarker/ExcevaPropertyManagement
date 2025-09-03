@@ -1,34 +1,37 @@
 #!/bin/bash
 
-echo "🔍 Checking Exceva Property Management localhost services..."
+# Check Localhost Server Status
+# This script checks if both Django backend and Next.js frontend are running
 
-# Check if PostgreSQL is running
-if pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
-    echo "✅ PostgreSQL is running"
-else
-    echo "❌ PostgreSQL is not running"
-fi
+echo "🔍 Checking Exceva Property Management Server Status..."
+echo ""
 
-# Check if Redis is running
-if redis-cli ping >/dev/null 2>&1; then
-    echo "✅ Redis is running"
+# Check Django backend
+echo "📡 Django Backend (Port 8000):"
+if curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/ | grep -q "200"; then
+    echo "   ✅ Running - http://localhost:8000"
+    echo "   📊 Admin: http://localhost:8000/admin"
 else
-    echo "❌ Redis is not running"
-fi
-
-# Check if backend is accessible
-if curl -s http://localhost:8000/api/health/ >/dev/null 2>&1; then
-    echo "✅ Backend API is running"
-else
-    echo "❌ Backend API is not running"
-fi
-
-# Check if frontend is accessible
-if curl -s http://localhost:3000 >/dev/null 2>&1; then
-    echo "✅ Frontend is running"
-else
-    echo "❌ Frontend is not running"
+    echo "   ❌ Not responding"
 fi
 
 echo ""
-echo "🎯 To start the system, run: ./start-localhost.sh"
+
+# Check Next.js frontend
+echo "🌐 Next.js Frontend (Port 3000):"
+if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 | grep -q "200"; then
+    echo "   ✅ Running - http://localhost:3000"
+else
+    echo "   ❌ Not responding"
+fi
+
+echo ""
+
+# Check running processes
+echo "🔧 Running Processes:"
+echo "   Django: $(ps aux | grep -c 'manage.py runserver' | tr -d ' ') instances"
+echo "   Next.js: $(ps aux | grep -c 'next dev' | tr -d ' ') instances"
+
+echo ""
+echo "💡 To start servers: ./start-localhost.sh"
+echo "💡 To stop servers: Ctrl+C in the start script or pkill -f 'manage.py runserver' && pkill -f 'next dev'"
