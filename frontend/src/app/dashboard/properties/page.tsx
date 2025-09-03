@@ -41,7 +41,8 @@ interface Property {
   is_active: boolean;
   full_address: string;
   display_name: string;
-  occupancy_info: {
+  // Occupancy information may be absent for some properties if backend omits it
+  occupancy_info?: {
     status: string;
     details?: string;
     tenant_name?: string;
@@ -189,7 +190,16 @@ export default function PropertiesDashboardPage() {
 
 
   // Render occupancy status
-  const renderOccupancyStatus = (occupancy: Property['occupancy_info'], property: Property) => {
+  const renderOccupancyStatus = (occupancy: Property['occupancy_info'] | undefined | null, property: Property) => {
+    // Gracefully handle missing or malformed occupancy info
+    if (!occupancy || !occupancy.status) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted/20 text-muted-foreground border border-border/30">
+          Unknown
+        </span>
+      );
+    }
+
     if (occupancy.status === 'Vacant') {
       return (
         <div className="space-y-1">
