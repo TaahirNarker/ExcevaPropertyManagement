@@ -654,7 +654,7 @@ class PaymentAllocationService:
         from .models import InvoicePayment
         
         with transaction.atomic():
-            remaining_amount = amount
+            remaining_amount = Decimal(str(amount))
             payment_records = []
             
             # Sort invoices by due date (oldest first)
@@ -665,7 +665,7 @@ class PaymentAllocationService:
                     break
                 
                 # Calculate how much to allocate to this invoice
-                invoice_balance = invoice.balance_due
+                invoice_balance = Decimal(str(invoice.balance_due))
                 allocation_amount = min(remaining_amount, invoice_balance)
                 
                 if allocation_amount > 0:
@@ -673,7 +673,7 @@ class PaymentAllocationService:
                     payment = InvoicePayment.objects.create(
                         invoice=invoice,
                         tenant=tenant,
-                        amount=amount,  # Full payment amount
+                        amount=allocation_amount,            # FIX: amount must equal allocated amount
                         allocated_amount=allocation_amount,
                         payment_date=payment_date,
                         payment_method=payment_method,
@@ -1143,39 +1143,122 @@ class PaymentReconciliationService:
     
     def record_manual_payment(self, payment_data, recorded_by):
         """
-        Record manual payment entry
+        Record manual payment entry and automatically allocate to outstanding invoices.
         
-        Args:
-            payment_data: Payment information
-            recorded_by: User recording the payment
-            
+        Behavior:
+        - Creates a ManualPayment bound to the lease.
+        - Automatically allocates the payment to the lease's oldest outstanding invoices.
+        - For each allocation, creates a matching InvoicePayment so invoice totals and lease financials update.
+        - Updates ManualPayment.status to 'allocated' when fully allocated; otherwise remains 'pending'.
+        - Any remaining amount after allocations is credited to TenantCreditBalance.
+        
         Returns:
-            dict: Payment record and status
+            dict: { success, payment_id, status, allocations: [...], remaining_amount, message }
         """
         try:
             from leases.models import Lease
-            from .models import ManualPayment
+            from .models import ManualPayment, InvoicePayment, PaymentAllocation, Invoice
             
-            # Get lease
+            # Validate and normalize input
             lease = Lease.objects.get(id=payment_data['lease_id'])
+            amount = Decimal(str(payment_data['amount']))
+            if amount <= 0:
+                return {'success': False, 'error': 'Amount must be greater than zero'}
             
-            # Create manual payment record
-            payment = ManualPayment.objects.create(
-                lease=lease,
-                payment_method=payment_data['payment_method'],
-                amount=payment_data['amount'],
-                payment_date=payment_data['payment_date'],
-                reference_number=payment_data.get('reference_number', ''),
-                notes=payment_data.get('notes', ''),
-                recorded_by=recorded_by
-            )
+            payment_date = payment_data['payment_date']
+            payment_method = payment_data['payment_method']
+            reference_number = payment_data.get('reference_number', '')
+            notes = payment_data.get('notes', '')
             
-            return {
-                'success': True,
-                'payment_id': payment.id,
-                'status': 'pending_allocation',
-                'message': 'Payment recorded successfully. Manual allocation required.'
-            }
+            with transaction.atomic():
+                # 1) Create manual payment record
+                manual_payment = ManualPayment.objects.create(
+                    lease=lease,
+                    payment_method=payment_method,
+                    amount=amount,
+                    payment_date=payment_date,
+                    reference_number=reference_number,
+                    notes=notes,
+                    recorded_by=recorded_by
+                )
+                
+                # 2) Find outstanding invoices for this lease
+                outstanding_invoices = Invoice.objects.filter(
+                    lease=lease,
+                    status__in=['sent', 'overdue', 'partially_paid'],
+                    balance_due__gt=0
+                ).order_by('due_date', 'created_at')
+                
+                remaining = Decimal(str(amount))
+                allocations = []
+                
+                # 3) Allocate to oldest invoices first
+                for inv in outstanding_invoices:
+                    if remaining <= 0:
+                        break
+                    inv_balance = Decimal(str(inv.balance_due))
+                    if inv_balance <= 0:
+                        continue
+                    
+                    allocation_amount = min(remaining, inv_balance)
+                    
+                    # Link manual payment to invoice via PaymentAllocation
+                    alloc = PaymentAllocation.objects.create(
+                        payment=manual_payment,
+                        invoice=inv,
+                        allocated_amount=allocation_amount,
+                        allocation_type='manual',
+                        notes='Auto-allocation on manual payment record',
+                        allocated_by=recorded_by
+                    )
+                    allocations.append({
+                        'invoice_id': inv.id,
+                        'invoice_number': inv.invoice_number,
+                        'allocated_amount': float(allocation_amount)
+                    })
+                    
+                    # Create InvoicePayment so invoice totals update and appear in lease financials
+                    InvoicePayment.objects.create(
+                        invoice=inv,
+                        tenant=inv.tenant,
+                        amount=allocation_amount,
+                        allocated_amount=allocation_amount,
+                        payment_date=payment_date,
+                        payment_method=payment_method,
+                        reference_number=reference_number,
+                        notes=notes,
+                        recorded_by=recorded_by,
+                        is_overpayment=False
+                    )
+                    
+                    inv.calculate_totals()
+                    inv.save()
+                    remaining -= allocation_amount
+                
+                # 4) Update manual payment status and credit any remainder
+                from .models import TenantCreditBalance
+                if remaining > 0:
+                    credit_balance, _ = TenantCreditBalance.objects.get_or_create(
+                        tenant=lease.tenant,
+                        defaults={'balance': Decimal('0.00')}
+                    )
+                    credit_balance.balance += remaining
+                    credit_balance.save()
+                
+                manual_payment.allocated_amount = amount - remaining
+                manual_payment.remaining_amount = remaining
+                if manual_payment.remaining_amount <= 0:
+                    manual_payment.status = 'allocated'
+                manual_payment.save()
+                
+                return {
+                    'success': True,
+                    'payment_id': manual_payment.id,
+                    'status': manual_payment.status,
+                    'allocations': allocations,
+                    'remaining_amount': float(remaining),
+                    'message': 'Payment recorded and allocated successfully' if allocations else 'Payment recorded. No outstanding invoices; credited remaining to tenant.'
+                }
             
         except Lease.DoesNotExist:
             return {
