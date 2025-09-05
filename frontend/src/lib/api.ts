@@ -456,7 +456,7 @@ export const tenantApi = {
   // Additional methods for tenant details
   getTenantLeaseHistory: async (id: string): Promise<LeaseHistory[]> => {
     try {
-      const response = await fetchWithError(`${API_BASE_URL}/tenants/${id}/leases/`);
+      const response = await fetchWithError(`${API_BASE_URL}/tenants/id/${id}/leases/`);
       const data = await response.json();
       return data.results || data;
     } catch (error) {

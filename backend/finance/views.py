@@ -866,7 +866,7 @@ class InvoiceAuditLogViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 # New Finance API endpoints for the frontend
-class FinanceAPIViewSet(viewsets.ViewSet):
+class FinanceAPIViewSet(viewsets.GenericViewSet):
     """
     ViewSet for finance dashboard data
     """
