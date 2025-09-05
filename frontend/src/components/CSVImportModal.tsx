@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { XMarkIcon, ArrowUpTrayIcon, CheckCircleIcon, ExclamationTriangleIcon, EyeIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
-import { financeApi } from '@/lib/api';
+import { invoiceApi } from '@/lib/api';
 
 interface CSVRow {
   [key: string]: string;
@@ -183,7 +183,8 @@ const CSVImportModal: React.FC<CSVImportModalProps> = ({ isOpen, onClose, onSucc
       formData.append('bank_name', bankName);
       formData.append('field_mapping', JSON.stringify(fieldMapping));
 
-      const result = await financeApi.importBankCSV(csvFile, bankName);
+      // Use the reconciliation API that returns a structured result with success flag
+      const result = await invoiceApi.importBankCSV(csvFile, bankName);
       
       if (result.success) {
         setImportResult(result);

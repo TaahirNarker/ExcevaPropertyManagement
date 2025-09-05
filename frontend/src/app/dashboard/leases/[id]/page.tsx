@@ -44,7 +44,9 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { leaseAPI } from '@/lib/lease-api';
 import { authService } from '@/lib/auth';
-import { financeApi } from '@/lib/api';
+import { financeApi, invoiceApi } from '@/lib/api';
+import ManualPaymentModal from '@/components/ManualPaymentModal';
+import CSVImportModal from '@/components/CSVImportModal';
 
 // Enhanced Lease interface
 interface Lease {
@@ -186,6 +188,10 @@ export default function LeaseDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'financials' | 'documents' | 'maintenance'>('overview');
   const [financialsLoading, setFinancialsLoading] = useState(false);
+  const [showManualPayment, setShowManualPayment] = useState(false);
+  const [showCSVImport, setShowCSVImport] = useState(false);
+  const [showStatement, setShowStatement] = useState(false);
+  const [statement, setStatement] = useState<any | null>(null);
 
   useEffect(() => {
     const fetchLeaseDetails = async () => {
@@ -227,6 +233,30 @@ export default function LeaseDetailPage() {
       setFinancials(null);
     } finally {
       setFinancialsLoading(false);
+    }
+  };
+
+  const handleManualPaymentSuccess = async () => {
+    setShowManualPayment(false);
+    await fetchLeaseFinancials();
+    toast.success('Payment recorded. Financials updated.');
+  };
+
+  const handleCSVSuccess = async () => {
+    setShowCSVImport(false);
+    await fetchLeaseFinancials();
+    toast.success('CSV processed. Financials updated.');
+  };
+
+  const openStatement = async () => {
+    if (!lease) return;
+    try {
+      setShowStatement(true);
+      const data = await invoiceApi.getTenantStatement(lease.tenant.id);
+      setStatement(data);
+    } catch (e: any) {
+      toast.error('Failed to load statement');
+      setStatement(null);
     }
   };
 
@@ -479,10 +509,15 @@ export default function LeaseDetailPage() {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-white">Financial Management</h2>
-                <Button onClick={() => router.push(`/dashboard/leases/${lease.id}/invoice/create`)}>
-                  <PlusIcon className="h-4 w-4 mr-2" />
-                  Create Invoice
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setShowManualPayment(true)}>Record Payment</Button>
+                  <Button variant="outline" onClick={() => setShowCSVImport(true)}>Import CSV</Button>
+                  <Button variant="outline" onClick={openStatement}>View Statement</Button>
+                  <Button onClick={() => router.push(`/dashboard/leases/${lease.id}/invoice/create`)}>
+                    <PlusIcon className="h-4 w-4 mr-2" />
+                    Create Invoice
+                  </Button>
+                </div>
               </div>
 
               {financialsLoading ? (
@@ -616,7 +651,9 @@ export default function LeaseDetailPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {financials.invoice_history.map((invoice) => (
+                        {financials.invoice_history.length === 0 ? (
+                          <div className="text-muted-foreground text-sm">No invoices yet.</div>
+                        ) : financials.invoice_history.map((invoice) => (
                           <div key={invoice.id} className="border border-white/10 rounded-lg p-4">
                             <div className="flex justify-between items-start mb-3">
                               <div>
@@ -714,7 +751,9 @@ export default function LeaseDetailPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
-                          {financials.payment_summary.map((month) => (
+                          {financials.payment_summary.length === 0 ? (
+                            <div className="text-muted-foreground text-sm">No payments yet.</div>
+                          ) : financials.payment_summary.map((month) => (
                             <div key={month.month} className="flex justify-between items-center">
                               <span className="text-muted-foreground">{formatMonth(month.month)}</span>
                               <div className="text-right">
@@ -733,7 +772,9 @@ export default function LeaseDetailPage() {
                       </CardHeader>
                       <CardContent>
                         <div className="space-y-3">
-                          {financials.recent_payments.map((payment) => (
+                          {financials.recent_payments.length === 0 ? (
+                            <div className="text-muted-foreground text-sm">No payments yet.</div>
+                          ) : financials.recent_payments.map((payment) => (
                             <div key={payment.id} className="flex justify-between items-center">
                               <div className="flex items-center space-x-2">
                                 {getPaymentMethodIcon(payment.payment_method)}
@@ -844,6 +885,74 @@ export default function LeaseDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Modals */}
+      {showManualPayment && (
+        <ManualPaymentModal
+          isOpen={showManualPayment}
+          onClose={() => setShowManualPayment(false)}
+          onSuccess={handleManualPaymentSuccess}
+          leases={lease ? [lease] : []}
+        />
+      )}
+      {showCSVImport && (
+        <CSVImportModal
+          isOpen={showCSVImport}
+          onClose={() => setShowCSVImport(false)}
+          onSuccess={handleCSVSuccess}
+        />
+      )}
+
+      {/* Statement Modal */}
+      {showStatement && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card/95 rounded-2xl shadow-2xl border border-border/50 max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-border/50">
+              <h3 className="text-xl font-semibold text-foreground">Tenant Statement</h3>
+              <button className="p-2" onClick={() => { setShowStatement(false); setStatement(null); }}>Close</button>
+            </div>
+            <div className="p-6">
+              {!statement ? (
+                <div className="text-muted-foreground">Loading...</div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-sm text-muted-foreground">
+                    Period: {new Date(statement.statement_period.start_date).toLocaleDateString()} – {new Date(statement.statement_period.end_date).toLocaleDateString()}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-muted-foreground">
+                          <th className="py-2 pr-4">Date</th>
+                          <th className="py-2 pr-4">Type</th>
+                          <th className="py-2 pr-4">Description</th>
+                          <th className="py-2 pr-4">Reference</th>
+                          <th className="py-2 pr-4 text-right">Charges</th>
+                          <th className="py-2 pr-4 text-right">Payments</th>
+                          <th className="py-2 pr-0 text-right">Balance</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {statement.transactions.map((t: any, idx: number) => (
+                          <tr key={idx} className="border-t border-border/50">
+                            <td className="py-2 pr-4">{new Date(t.date).toLocaleDateString()}</td>
+                            <td className="py-2 pr-4 capitalize">{t.type}</td>
+                            <td className="py-2 pr-4">{t.description}</td>
+                            <td className="py-2 pr-4">{t.reference}</td>
+                            <td className="py-2 pr-4 text-right">{t.charges ? formatCurrency(t.charges) : '-'}</td>
+                            <td className="py-2 pr-4 text-right">{t.payments ? formatCurrency(t.payments) : '-'}</td>
+                            <td className="py-2 pr-0 text-right">{formatCurrency(t.balance)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

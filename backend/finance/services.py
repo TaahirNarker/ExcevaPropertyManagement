@@ -1014,10 +1014,16 @@ class PaymentReconciliationService:
         return None
     
     def _reconcile_exact_match(self, bank_transaction, invoice, lease):
-        """Reconcile exact amount match"""
+        """Reconcile exact amount match
+
+        IMPORTANT: Create an InvoicePayment record so UI sections that rely on
+        InvoicePayment (e.g., recent payments and monthly summaries) get data.
+        Always recalculate invoice totals using model methods rather than
+        mutating numeric fields directly.
+        """
         try:
-            # Create payment allocation
-            from .models import PaymentAllocation
+            # Create payment allocation entry for traceability
+            from .models import PaymentAllocation, InvoicePayment
             PaymentAllocation.objects.create(
                 bank_transaction=bank_transaction,
                 invoice=invoice,
@@ -1025,36 +1031,53 @@ class PaymentReconciliationService:
                 allocation_type='csv_import',
                 notes='Automatic reconciliation via CSV import'
             )
-            
-            # Update invoice
-            invoice.amount_paid += bank_transaction.amount
-            invoice.balance_due = 0
+
+            # Create the canonical payment record tied to the invoice
+            InvoicePayment.objects.create(
+                invoice=invoice,
+                tenant=invoice.tenant,
+                amount=bank_transaction.amount,
+                allocated_amount=bank_transaction.amount,
+                payment_date=bank_transaction.transaction_date,
+                payment_method='bank_transfer',
+                reference_number=str(bank_transaction.id) or bank_transaction.reference_number,
+                notes='CSV import: exact match',
+                recorded_by=bank_transaction.imported_by if hasattr(bank_transaction, 'imported_by') else None,
+                is_overpayment=False
+            )
+
+            # Recalculate invoice totals safely
+            invoice.calculate_totals()
             invoice.status = 'paid'
             invoice.save()
-            
+
             # Update bank transaction
             bank_transaction.matched_lease = lease
             bank_transaction.matched_invoice = invoice
             bank_transaction.status = 'reconciled'
             bank_transaction.save()
-            
+
             return {'status': 'reconciled', 'invoice_id': invoice.id}
-            
+
         except Exception as e:
             self.logger.error(f"Exact match reconciliation failed: {e}")
             return {'status': 'failed', 'reason': str(e)}
     
     def _reconcile_partial_payment(self, bank_transaction, outstanding_invoices, lease):
-        """Reconcile partial payment and create underpayment alert"""
+        """Reconcile partial payment and create underpayment alert
+
+        Ensures an InvoicePayment entry is created and invoice totals are
+        recalculated so frontend financials update instantly.
+        """
         try:
             # Find the oldest outstanding invoice
             oldest_invoice = min(outstanding_invoices, key=lambda inv: inv.due_date)
-            
+
             # Calculate shortfall
             shortfall = oldest_invoice.balance_due - bank_transaction.amount
-            
-            # Create payment allocation
-            from .models import PaymentAllocation
+
+            # Create payment allocation and payment record
+            from .models import PaymentAllocation, InvoicePayment, UnderpaymentAlert
             PaymentAllocation.objects.create(
                 bank_transaction=bank_transaction,
                 invoice=oldest_invoice,
@@ -1062,15 +1085,26 @@ class PaymentReconciliationService:
                 allocation_type='csv_import',
                 notes='Partial payment allocation'
             )
-            
-            # Update invoice
-            oldest_invoice.amount_paid += bank_transaction.amount
-            oldest_invoice.balance_due = shortfall
+
+            InvoicePayment.objects.create(
+                invoice=oldest_invoice,
+                tenant=oldest_invoice.tenant,
+                amount=bank_transaction.amount,
+                allocated_amount=bank_transaction.amount,
+                payment_date=bank_transaction.transaction_date,
+                payment_method='bank_transfer',
+                reference_number=str(bank_transaction.id) or bank_transaction.reference_number,
+                notes='CSV import: partial match',
+                recorded_by=bank_transaction.imported_by if hasattr(bank_transaction, 'imported_by') else None,
+                is_overpayment=False
+            )
+
+            # Recalculate invoice totals and set status
+            oldest_invoice.calculate_totals()
             oldest_invoice.status = 'partially_paid'
             oldest_invoice.save()
-            
-            # Create underpayment alert
-            from .models import UnderpaymentAlert
+
+            # Create underpayment alert for visibility
             UnderpaymentAlert.objects.create(
                 tenant=lease.tenant,
                 invoice=oldest_invoice,
@@ -1080,63 +1114,81 @@ class PaymentReconciliationService:
                 shortfall_amount=shortfall,
                 alert_message=f"Underpayment detected: Expected R{oldest_invoice.total_amount}, received R{bank_transaction.amount}. Shortfall: R{shortfall}"
             )
-            
+
             # Update bank transaction
             bank_transaction.matched_lease = lease
             bank_transaction.status = 'reconciled'
             bank_transaction.save()
-            
+
             return {'status': 'reconciled', 'partial': True, 'shortfall': float(shortfall)}
-            
+
         except Exception as e:
             return {'status': 'failed', 'reason': str(e)}
     
     def _reconcile_overpayment(self, bank_transaction, outstanding_invoices, lease):
-        """Reconcile overpayment (create credit for next invoice)"""
+        """Reconcile overpayment (create credit for next invoice)
+
+        Creates InvoicePayment records for each settled invoice and credits any
+        remainder to the tenant's credit balance so future invoices can apply it.
+        """
         try:
-            # Allocate to all outstanding invoices
+            from .models import PaymentAllocation, InvoicePayment, TenantCreditBalance
+
+            # Allocate to all outstanding invoices (oldest first)
             total_outstanding = sum(inv.balance_due for inv in outstanding_invoices)
-            overpayment_amount = bank_transaction.amount - total_outstanding
-            
-            # Allocate to invoices
+            remaining = bank_transaction.amount
             for invoice in outstanding_invoices:
-                from .models import PaymentAllocation
+                allocate = min(remaining, invoice.balance_due)
+                if allocate <= 0:
+                    break
+
                 PaymentAllocation.objects.create(
                     bank_transaction=bank_transaction,
                     invoice=invoice,
-                    allocated_amount=invoice.balance_due,
+                    allocated_amount=allocate,
                     allocation_type='csv_import',
-                    notes='Full payment allocation'
+                    notes='Full/partial payment allocation from CSV import'
                 )
-                
-                # Mark invoice as paid
-                invoice.amount_paid += invoice.balance_due
-                invoice.balance_due = 0
-                invoice.status = 'paid'
+
+                InvoicePayment.objects.create(
+                    invoice=invoice,
+                    tenant=invoice.tenant,
+                    amount=allocate,
+                    allocated_amount=allocate,
+                    payment_date=bank_transaction.transaction_date,
+                    payment_method='bank_transfer',
+                    reference_number=str(bank_transaction.id) or bank_transaction.reference_number,
+                    notes='CSV import allocation',
+                    recorded_by=bank_transaction.imported_by if hasattr(bank_transaction, 'imported_by') else None,
+                    is_overpayment=False
+                )
+
+                # Recalculate and save invoice
+                invoice.calculate_totals()
+                if invoice.balance_due <= 0:
+                    invoice.status = 'paid'
+                else:
+                    invoice.status = 'partially_paid'
                 invoice.save()
-            
-            # Create credit adjustment for overpayment
-            if overpayment_amount > 0:
-                # Find the most recent invoice to attach credit to
-                latest_invoice = outstanding_invoices[-1]
-                
-                from .models import Adjustment
-                Adjustment.objects.create(
-                    invoice=latest_invoice,
-                    adjustment_type='credit',
-                    amount=-overpayment_amount,  # Negative for credit
-                    reason='Overpayment credit from bank reconciliation',
-                    notes=f'Credit of R{overpayment_amount} available for next invoice',
-                    effective_date=timezone.now().date()
+
+                remaining -= allocate
+
+            # Handle any true overpayment by crediting tenant balance
+            if remaining > 0:
+                credit_balance, _ = TenantCreditBalance.objects.get_or_create(
+                    tenant=lease.tenant,
+                    defaults={'balance': Decimal('0.00')}
                 )
-            
+                credit_balance.balance += Decimal(str(remaining))
+                credit_balance.save()
+
             # Update bank transaction
             bank_transaction.matched_lease = lease
             bank_transaction.status = 'reconciled'
             bank_transaction.save()
-            
-            return {'status': 'reconciled', 'overpayment': True, 'credit_amount': overpayment_amount}
-            
+
+            return {'status': 'reconciled', 'overpayment': remaining > 0, 'credit_amount': float(max(0, remaining))}
+
         except Exception as e:
             self.logger.error(f"Overpayment reconciliation failed: {e}")
             return {'status': 'failed', 'reason': str(e)}
