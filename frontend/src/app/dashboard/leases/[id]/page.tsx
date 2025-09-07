@@ -238,12 +238,14 @@ export default function LeaseDetailPage() {
 
   const handleManualPaymentSuccess = async () => {
     setShowManualPayment(false);
+    // Always refetch immediately so the top cards reflect the new payment
     await fetchLeaseFinancials();
     toast.success('Payment recorded. Financials updated.');
   };
 
   const handleCSVSuccess = async () => {
     setShowCSVImport(false);
+    // CSV import may allocate multiple payments; refresh summary instantly
     await fetchLeaseFinancials();
     toast.success('CSV processed. Financials updated.');
   };
@@ -304,6 +306,40 @@ export default function LeaseDetailPage() {
       case 'cash': return <CurrencyDollarIcon className="h-4 w-4" />;
       case 'check': return <DocumentDuplicateIcon className="h-4 w-4" />;
       default: return <BanknotesIcon className="h-4 w-4" />;
+    }
+  };
+
+  // Invoice actions
+  const handleDeleteInvoice = async (invoiceId: number) => {
+    if (!lease) return;
+    const confirmed = window.confirm('Delete this invoice? This cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+      await invoiceApi.deleteInvoice(invoiceId);
+      toast.success('Invoice deleted');
+      await fetchLeaseFinancials();
+    } catch (err: any) {
+      const message = err?.response?.data?.detail || err?.response?.data?.error || err?.message || 'Failed to delete invoice';
+      toast.error(message);
+      console.error('Delete invoice error', err);
+    }
+  };
+
+  const handleDownloadInvoicePdf = async (invoiceId: number, invoiceNumber?: string) => {
+    try {
+      const blob = await invoiceApi.generateInvoicePDF(invoiceId);
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${invoiceNumber || 'invoice'}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error('Failed to download invoice PDF');
+      console.error('Download invoice pdf error', err);
     }
   };
 
@@ -671,6 +707,25 @@ export default function LeaseDetailPage() {
                                     {invoice.days_overdue} days overdue
                                   </Badge>
                                 )}
+                                {/* Actions */}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDownloadInvoicePdf(invoice.id, invoice.invoice_number)}
+                                  className="ml-2"
+                                  title="Download PDF"
+                                >
+                                  <ArrowDownTrayIcon className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleDeleteInvoice(invoice.id)}
+                                  className="ml-1"
+                                  title="Delete invoice"
+                                >
+                                  <TrashIcon className="h-4 w-4" />
+                                </Button>
                               </div>
                             </div>
                             

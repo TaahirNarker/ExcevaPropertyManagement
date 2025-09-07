@@ -222,3 +222,83 @@ class ManualAllocationIntegrationTest(TestCase):
         invoice.refresh_from_db()
         self.assertEqual(invoice.amount_paid, Decimal('600.00'))
         self.assertEqual(invoice.status, 'partially_paid')
+
+
+class AutoRecalcAndSummaryTest(TestCase):
+    """Minimal tests verifying signals and financial_summary outstanding."""
+
+    def _create_user(self, email):
+        return CustomUser.objects.create_user(username=email.split('@')[0], email=email, password='pass1234')
+
+    def setUp(self):
+        owner = self._create_user('owner4@example.com')
+        self.property = Property.objects.create(
+            name="Test Property",
+            street_address="1 Test St",
+            city="Cape Town",
+            province="western_cape",
+            owner=owner,
+        )
+        user = self._create_user('amy@example.com')
+        self.tenant = Tenant.objects.create(
+            user=user,
+            id_number="8001015009090",
+            date_of_birth=date(1980,1,1),
+            phone="0800000006",
+            email='amy@example.com',
+            address="4 Main St",
+            city="Cape Town",
+            province="Western Cape",
+            postal_code="8000",
+            employment_status='employed',
+            emergency_contact_name='EC',
+            emergency_contact_phone='0800000007',
+            emergency_contact_relationship='Friend',
+            status='active'
+        )
+        self.lease = Lease.objects.create(
+            property=self.property,
+            tenant=self.tenant,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 12, 31),
+            monthly_rent=Decimal('20000.00'),
+            deposit_amount=Decimal('0.00'),
+            rental_frequency='Monthly',
+            rent_due_day=1,
+            status='active'
+        )
+
+    def test_signals_recalculate_invoice_on_payment(self):
+        from .models import Invoice, InvoiceLineItem, InvoicePayment
+        inv = Invoice.objects.create(
+            lease=self.lease, property=self.property, tenant=self.tenant,
+            title='Signals', issue_date=timezone.now().date(), due_date=timezone.now().date(), status='sent')
+        InvoiceLineItem.objects.create(invoice=inv, description='Rent', category='Rent', quantity=1, unit_price=Decimal('20000.00'), total=Decimal('20000.00'))
+        inv.refresh_from_db()
+        self.assertEqual(inv.balance_due, Decimal('20000.00'))
+
+        InvoicePayment.objects.create(invoice=inv, tenant=self.tenant, amount=Decimal('5000.00'), allocated_amount=Decimal('5000.00'), payment_date=timezone.now().date(), payment_method='bank_transfer')
+        inv.refresh_from_db()
+        self.assertEqual(inv.amount_paid, Decimal('5000.00'))
+        self.assertEqual(inv.balance_due, Decimal('15000.00'))
+
+    def test_financial_summary_uses_balance_due(self):
+        from rest_framework.test import APIRequestFactory
+        from .views import FinanceAPIViewSet
+        from .models import Invoice, InvoiceLineItem, InvoicePayment
+        # create two invoices
+        inv1 = Invoice.objects.create(lease=self.lease, property=self.property, tenant=self.tenant, title='I1', issue_date=timezone.now().date(), due_date=timezone.now().date(), status='sent')
+        InvoiceLineItem.objects.create(invoice=inv1, description='Rent', category='Rent', quantity=1, unit_price=Decimal('1000.00'), total=Decimal('1000.00'))
+
+        inv2 = Invoice.objects.create(lease=self.lease, property=self.property, tenant=self.tenant, title='I2', issue_date=timezone.now().date(), due_date=timezone.now().date(), status='partially_paid')
+        InvoiceLineItem.objects.create(invoice=inv2, description='Rent', category='Rent', quantity=1, unit_price=Decimal('2000.00'), total=Decimal('2000.00'))
+        InvoicePayment.objects.create(invoice=inv2, tenant=self.tenant, amount=Decimal('500.00'), allocated_amount=Decimal('500.00'), payment_date=timezone.now().date(), payment_method='bank_transfer')
+
+        inv1.refresh_from_db(); inv2.refresh_from_db()
+        factory = APIRequestFactory()
+        request = factory.get('/api/finance/financial-summary')
+        view = FinanceAPIViewSet.as_view({'get': 'financial_summary'})
+        response = view(request)
+        self.assertEqual(response.status_code, 200)
+        expected = float(inv1.balance_due + inv2.balance_due)
+        self.assertAlmostEqual(response.data['total_outstanding'], expected, places=2)

@@ -141,17 +141,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         )
 
     def perform_destroy(self, instance):
-        """Check if invoice can be deleted and create audit log"""
-        # Check if invoice is locked
-        if instance.is_locked:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("Cannot delete locked invoice.")
-        
-        # Check if user has permission to delete this status
-        if not instance.can_delete():
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied(f"Cannot delete invoice with status '{instance.get_status_display()}'")
-        
+        """Allow invoice deletion regardless of lock/status and create audit log"""
         # Create audit log entry before deletion
         InvoiceAuditLog.objects.create(
             invoice=instance,
@@ -159,8 +149,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             details=f"Invoice {instance.invoice_number} deleted"
         )
-        
-        # Perform the deletion
+
+        # Perform the deletion unconditionally
         super().perform_destroy(instance)
 
     @action(detail=False, methods=['get'])
@@ -848,11 +838,12 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
                 total=Sum('total_amount')
             )['total'] or Decimal('0.00')
             
-            # Calculate outstanding amounts (from unpaid invoices)
+            # Calculate outstanding amounts using current balance_due on any unpaid/locked invoices
+            # This fixes the previous bug that summed total_amount rather than the remaining balance.
             total_outstanding = Invoice.objects.filter(
-                status__in=['sent', 'overdue']
+                status__in=['sent', 'overdue', 'partially_paid', 'locked']
             ).aggregate(
-                total=Sum('total_amount')
+                total=Sum('balance_due')
             )['total'] or Decimal('0.00')
             
             # Calculate collection rate
@@ -979,9 +970,10 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
     def payments(self, request):
         """Get recent payments"""
         try:
-            recent_payments = InvoicePayment.objects.filter(
-                invoice__status='paid'
-            ).select_related('invoice', 'invoice__tenant', 'invoice__property').order_by('-payment_date')[:20]
+            # Show recent payments regardless of invoice status so partials are visible
+            recent_payments = InvoicePayment.objects.select_related(
+                'invoice', 'invoice__tenant', 'invoice__property'
+            ).order_by('-payment_date')[:20]
             
             payments = []
             for payment in recent_payments:

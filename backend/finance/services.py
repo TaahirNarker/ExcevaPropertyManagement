@@ -1002,7 +1002,7 @@ class PaymentReconciliationService:
         from .models import Invoice
         return Invoice.objects.filter(
             lease=lease,
-            status__in=['sent', 'overdue', 'partially_paid'],
+            status__in=['sent', 'overdue', 'partially_paid', 'locked'],
             balance_due__gt=0
         ).order_by('due_date')
     
@@ -1237,7 +1237,7 @@ class PaymentReconciliationService:
                 # 2) Find outstanding invoices for this lease
                 outstanding_invoices = Invoice.objects.filter(
                     lease=lease,
-                    status__in=['sent', 'overdue', 'partially_paid'],
+                    status__in=['sent', 'overdue', 'partially_paid', 'locked'],
                     balance_due__gt=0
                 ).order_by('due_date', 'created_at')
                 
@@ -1534,9 +1534,17 @@ class PaymentReconciliationService:
                 issue_date__lte=end_date
             ).order_by('issue_date')
             
-            # Get payments for period
+            # Get manual payments for period (source entries)
             payments = ManualPayment.objects.filter(
                 lease=lease,
+                payment_date__gte=start_date,
+                payment_date__lte=end_date
+            ).order_by('payment_date')
+
+            # Get allocated invoice payments for period (canonical entries used in financial views)
+            from .models import InvoicePayment as _InvoicePayment
+            invoice_payments = _InvoicePayment.objects.filter(
+                invoice__lease=lease,
                 payment_date__gte=start_date,
                 payment_date__lte=end_date
             ).order_by('payment_date')
@@ -1550,7 +1558,8 @@ class PaymentReconciliationService:
             
             # Calculate summary
             total_charges = sum(inv.total_amount for inv in invoices)
-            total_payments = sum(pay.amount for pay in payments)
+            # Use InvoicePayment totals for accuracy (allocations reflect true application of funds)
+            total_payments = sum(p.amount for p in invoice_payments)
             total_adjustments = sum(adj.amount for adj in adjustments)
             
             # Get outstanding invoices
@@ -1578,17 +1587,30 @@ class PaymentReconciliationService:
                     'balance': float(invoice.balance_due)
                 })
             
-            # Add payments
+            # Add allocated invoice payments (reflected in financial sections and balances)
+            for pay in invoice_payments:
+                transactions.append({
+                    'date': pay.payment_date,
+                    'type': 'payment',
+                    'description': f"Payment - {pay.payment_method}",
+                    'reference': pay.reference_number or f"PAY-{pay.id}",
+                    'charges': 0,
+                    'payments': float(pay.amount),
+                    'adjustments': 0,
+                    'balance': 0
+                })
+
+            # Optionally also list manual payment source entries for traceability (marked as source)
             for payment in payments:
                 transactions.append({
                     'date': payment.payment_date,
-                    'type': 'payment',
-                    'description': f"Payment - {payment.payment_method}",
-                    'reference': payment.reference_number or f"PAY-{payment.id}",
+                    'type': 'payment_source',
+                    'description': f"Manual Payment Recorded - {payment.payment_method}",
+                    'reference': payment.reference_number or f"MP-{payment.id}",
                     'charges': 0,
                     'payments': float(payment.amount),
                     'adjustments': 0,
-                    'balance': 0  # Will be calculated
+                    'balance': 0
                 })
             
             # Add adjustments
@@ -1630,6 +1652,10 @@ class PaymentReconciliationService:
                     'end_date': end_date,
                     'generated_date': timezone.now()
                 },
+                'notes': [
+                    'Draft invoices (without an issue_date) may be excluded from date-bound summaries.',
+                    'Payments reflect allocations (InvoicePayment) to ensure balances match lease financials.'
+                ],
                 'summary': {
                     'opening_balance': 0,  # Could be enhanced to track previous balance
                     'total_charges': total_charges,

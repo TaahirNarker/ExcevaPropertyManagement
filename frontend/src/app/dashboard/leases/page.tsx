@@ -6,6 +6,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { 
   PlusIcon, 
@@ -383,6 +384,9 @@ export default function LeasesDashboardPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                     Status
                   </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10">
@@ -412,14 +416,13 @@ export default function LeasesDashboardPage() {
                   leases.map((lease) => (
                     <tr 
                       key={lease.id} 
-                      className="hover:bg-white/5 transition-colors cursor-pointer"
-                      onClick={() => handleViewLease(lease.id)}
+                      className="hover:bg-white/5 transition-colors"
                     >
                       <td className="px-6 py-4">
                         <div>
-                          <div className="text-sm font-medium text-white">
+                          <Link href={`/dashboard/leases/${lease.id}`} className="text-left text-sm font-medium text-white hover:underline">
                             Lease #{lease.id}
-                          </div>
+                          </Link>
                           <div className="text-sm text-gray-400">
                             {formatDate(lease.start_date)} - {formatDate(lease.end_date)}
                           </div>
@@ -458,6 +461,14 @@ export default function LeasesDashboardPage() {
                       </td>
                       <td className="px-6 py-4">
                         {renderStatusBadge(lease.status)}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <Link
+                          href={`/dashboard/leases/${lease.id}`}
+                          className="inline-block px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm"
+                        >
+                          View
+                        </Link>
                       </td>
                     </tr>
                   ))
