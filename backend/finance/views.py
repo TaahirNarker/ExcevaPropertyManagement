@@ -72,6 +72,24 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             return InvoiceDetailSerializer
         return InvoiceSerializer
 
+    def create(self, request, *args, **kwargs):
+        """
+        Override create to surface validation errors in logs and return explicit messages.
+        This greatly helps diagnosing 400 errors from the frontend.
+        """
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            # Log detailed errors to server log
+            try:
+                print("[InvoiceViewSet.create] Validation errors:", serializer.errors)
+            except Exception:
+                pass
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        self.perform_create(serializer)
+        headers = {"Location": str(serializer.instance.id)}
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         """Set created_by to current user and create audit log"""
         invoice = serializer.save(created_by=self.request.user)
