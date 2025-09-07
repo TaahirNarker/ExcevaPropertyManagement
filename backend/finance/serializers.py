@@ -338,12 +338,12 @@ class InvoiceAuditLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = InvoiceAuditLog
         fields = [
-            'id', 'action', 'action_display', 'description', 'user', 'user_name',
+            'id', 'action', 'action_display', 'user', 'user_name',
             'timestamp', 'timestamp_formatted', 'details', 'field_changed',
             'old_value', 'new_value', 'invoice_snapshot'
         ]
         read_only_fields = [
-            'id', 'action', 'action_display', 'description', 'user', 'user_name',
+            'id', 'action', 'action_display', 'user', 'user_name',
             'timestamp', 'timestamp_formatted', 'details', 'field_changed',
             'old_value', 'new_value', 'invoice_snapshot'
         ]

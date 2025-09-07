@@ -1068,15 +1068,26 @@ export const invoiceApi = {
 
   // Send invoice via email
   sendInvoice: async (
-    invoiceId: string | number, 
+    invoiceId: string | number,
     method: 'email' | 'whatsapp' | 'sms' = 'email',
     recipientEmail?: string
   ): Promise<{ success: boolean; message: string; status?: string }> => {
-    const response = await api.post(`/finance/invoices/${invoiceId}/send_invoice/`, {
-      method,
-      recipient_email: recipientEmail,
-    });
-    return response.data;
+    try {
+      const response = await api.post(`/finance/invoices/${invoiceId}/send/`, {
+        method,
+        recipient_email: recipientEmail,
+      });
+      return response.data;
+    } catch (err: any) {
+      if (err?.response?.status === 404) {
+        const response = await api.post(`/finance/invoices/${invoiceId}/send_invoice/`, {
+          method,
+          recipient_email: recipientEmail,
+        });
+        return response.data;
+      }
+      throw err;
+    }
   },
 
   // Mark invoice as paid

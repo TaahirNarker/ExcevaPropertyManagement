@@ -256,70 +256,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             'monthly_amount': monthly_invoices,
         })
 
-    @action(detail=True, methods=['post'])
-    def send_invoice(self, request, pk=None):
-        """Send invoice via email, mark as sent, and lock it"""
-        from .utils import send_invoice_email
-        
-        invoice = self.get_object()
-        method = request.data.get('method', 'email')
-        recipient_email = request.data.get('recipient_email')
-        
-        # Check if invoice can be sent
-        if not invoice.can_send():
-            return Response({
-                'success': False,
-                'message': f'Cannot send invoice with status "{invoice.get_status_display()}" or if already locked'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        if method == 'email':
-            try:
-                success, message = send_invoice_email(
-                    invoice, 
-                    recipient_email=recipient_email,
-                    include_payment_link=True
-                )
-                
-                if success:
-                    # Mark as sent and record audit
-                    invoice.sent_at = timezone.now()
-                    invoice.sent_by = request.user
-                    invoice.status = 'sent'
-                    invoice.save()
-                    
-                    # Create sent audit log
-                    InvoiceAuditLog.objects.create(
-                        invoice=invoice,
-                        action='sent',
-                        user=request.user,
-                        details=f"Invoice {invoice.invoice_number} sent via {method} to {recipient_email or 'default recipient'}"
-                    )
-                    
-                    # Lock the invoice immediately after sending
-                    invoice.lock_invoice(request.user)
-                    
-                    return Response({
-                        'success': True,
-                        'message': message,
-                        'status': invoice.status,
-                        'is_locked': invoice.is_locked
-                    })
-                else:
-                    return Response({
-                        'success': False,
-                        'message': message
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                    
-            except Exception as e:
-                return Response({
-                    'success': False,
-                    'message': f'Failed to send invoice: {str(e)}'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        else:
-            return Response({
-                'success': False,
-                'message': f'Method {method} not yet implemented'
-            }, status=status.HTTP_400_BAD_REQUEST)
+    
 
     @action(detail=True, methods=['post'])
     def mark_paid(self, request, pk=None):
@@ -718,6 +655,14 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             'invoice': serializer.data,
             'message': 'Invoice sent successfully'
         })
+
+    @action(detail=True, methods=['post'], url_path='send_invoice')
+    def send_invoice_legacy(self, request, pk=None):
+        """
+        Backward-compatible alias for older clients hitting /send_invoice/.
+        Delegates to the canonical send endpoint logic above.
+        """
+        return self.send_invoice(request, pk=pk)
 
 
 class InvoiceLineItemViewSet(viewsets.ModelViewSet):
