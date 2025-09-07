@@ -123,11 +123,11 @@ const ReportPreviewContent = () => {
           title: 'Top Performing Properties',
           headers: ['Property', 'Address', 'Revenue', 'Occupancy', 'Status'],
           rows: [
-            ['Sunset Apartments', '123 Main St', '$15,000', '100%', 'Active'],
-            ['Ocean View Condos', '456 Beach Rd', '$12,500', '95%', 'Active'],
-            ['Downtown Lofts', '789 Center Ave', '$11,200', '90%', 'Active'],
-            ['Garden Villas', '321 Park Blvd', '$10,800', '85%', 'Active'],
-            ['Mountain View', '654 Hill Dr', '$9,500', '80%', 'Active']
+            ['Sunset Apartments', '123 Main St', 'R 15,000', '100%', 'Active'],
+            ['Ocean View Condos', '456 Beach Rd', 'R 12,500', '95%', 'Active'],
+            ['Downtown Lofts', '789 Center Ave', 'R 11,200', '90%', 'Active'],
+            ['Garden Villas', '321 Park Blvd', 'R 10,800', '85%', 'Active'],
+            ['Mountain View', '654 Hill Dr', 'R 9,500', '80%', 'Active']
           ]
         },
         {
@@ -135,11 +135,11 @@ const ReportPreviewContent = () => {
           title: 'Recent Transactions',
           headers: ['Date', 'Property', 'Tenant', 'Amount', 'Type'],
           rows: [
-            ['2024-01-15', 'Sunset Apartments', 'John Smith', '$1,500', 'Rent'],
-            ['2024-01-14', 'Ocean View Condos', 'Sarah Johnson', '$1,800', 'Rent'],
-            ['2024-01-13', 'Downtown Lofts', 'Mike Wilson', '$1,200', 'Rent'],
-            ['2024-01-12', 'Garden Villas', 'Lisa Brown', '$1,600', 'Rent'],
-            ['2024-01-11', 'Mountain View', 'David Lee', '$1,300', 'Rent']
+            ['2024-01-15', 'Sunset Apartments', 'John Smith', 'R 1,500', 'Rent'],
+            ['2024-01-14', 'Ocean View Condos', 'Sarah Johnson', 'R 1,800', 'Rent'],
+            ['2024-01-13', 'Downtown Lofts', 'Mike Wilson', 'R 1,200', 'Rent'],
+            ['2024-01-12', 'Garden Villas', 'Lisa Brown', 'R 1,600', 'Rent'],
+            ['2024-01-11', 'Mountain View', 'David Lee', 'R 1,300', 'Rent']
           ]
         }
       ]
@@ -168,7 +168,7 @@ const ReportPreviewContent = () => {
       tempContainer.style.backgroundColor = 'white';
       tempContainer.style.color = 'black';
       tempContainer.style.padding = '40px';
-      tempContainer.style.fontFamily = 'Arial, sans-serif';
+      tempContainer.style.fontFamily = "'Avenir', 'Avenir Next', 'Helvetica Neue', Helvetica, Arial, sans-serif";
       document.body.appendChild(tempContainer);
 
       // Generate PDF content
@@ -225,7 +225,7 @@ const ReportPreviewContent = () => {
 
   const generatePDFContent = (data: ReportData): string => {
     return `
-      <div style="font-family: Arial, sans-serif; color: #333;">
+      <div style="font-family: 'Avenir', 'Avenir Next', 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333;">
         <!-- Header -->
         <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #2563eb; padding-bottom: 20px;">
           <h1 style="color: #2563eb; margin: 0; font-size: 28px;">${data.title}</h1>
@@ -332,10 +332,12 @@ const ReportPreviewContent = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-ZA', {
       style: 'currency',
-      currency: 'USD'
-    }).format(amount);
+      currency: 'ZAR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount).replace('ZAR', 'R');
   };
 
   if (loading) {

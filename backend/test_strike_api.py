@@ -40,8 +40,8 @@ def test_api_connection():
         # Test a simple POST with minimal test data
         ('/invoices', 'POST', {
             'amount': {
-                'currency': 'USD',
-                'amount': '10.00'
+                'currency': 'ZAR',
+                'amount': '100.00'
             },
             'description': 'Test Invoice'
         })

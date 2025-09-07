@@ -354,10 +354,12 @@ export default function MaintenanceDashboardPage() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-ZA', {
       style: 'currency',
-      currency: 'USD'
-    }).format(amount);
+      currency: 'ZAR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount).replace('ZAR', 'R');
   };
 
   const getPriorityColor = (priority: string) => {

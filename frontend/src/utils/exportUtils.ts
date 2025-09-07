@@ -67,10 +67,12 @@ interface SupplierPayment {
 
 // Utility function to format currency
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('en-ZA', {
     style: 'currency',
-    currency: 'USD'
-  }).format(amount);
+    currency: 'ZAR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount).replace('ZAR', 'R');
 };
 
 // Utility function to format date

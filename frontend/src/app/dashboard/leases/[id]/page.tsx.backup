@@ -1867,7 +1867,7 @@ export default function LeaseDetailPage() {
                     backgroundColor: '#ffffff', 
                     color: '#000000', 
                     padding: '20px', 
-                    fontFamily: 'Arial, Helvetica, sans-serif',
+                    fontFamily: "'Avenir', 'Avenir Next', 'Helvetica Neue', Helvetica, Arial, sans-serif",
                     minHeight: '297mm',
                     width: '210mm',
                     boxSizing: 'border-box',
