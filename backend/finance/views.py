@@ -1229,6 +1229,7 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
                 invoice_history.append(invoice_data)
             
             # Get payment summary by month
+            # Extend structure to include detailed payments so the UI can render a drill-down
             payment_summary = {}
             for payment in InvoicePayment.objects.filter(invoice__lease=lease):
                 month_key = payment.payment_date.strftime('%Y-%m')
@@ -1236,8 +1237,20 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
                     payment_summary[month_key] = {
                         'month': month_key,
                         'total_payments': Decimal('0.00'),
-                        'payment_count': 0
+                        'payment_count': 0,
+                        # New: carry detailed list of payments for this month
+                        'payments': []
                     }
+                # Append detailed payment entry used by frontend modal
+                payment_summary[month_key]['payments'].append({
+                    'id': payment.id,
+                    'amount': float(payment.amount),
+                    'payment_date': payment.payment_date,
+                    'payment_method': payment.payment_method,
+                    'reference_number': payment.reference_number,
+                    'invoice_number': payment.invoice.invoice_number
+                })
+                # Maintain accurate aggregates from the detailed list
                 payment_summary[month_key]['total_payments'] += payment.amount
                 payment_summary[month_key]['payment_count'] += 1
             

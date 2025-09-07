@@ -146,9 +146,17 @@ interface Adjustment {
 }
 
 interface PaymentSummary {
-  month: string;
+  month: string;               // 'YYYY-MM'
   total_payments: number;
   payment_count: number;
+  payments: {
+    id: number;
+    amount: number;
+    payment_date: string;
+    payment_method: string;
+    reference_number: string;
+    invoice_number: string;
+  }[];
 }
 
 interface RecurringCharge {
@@ -192,6 +200,8 @@ export default function LeaseDetailPage() {
   const [showCSVImport, setShowCSVImport] = useState(false);
   const [showStatement, setShowStatement] = useState(false);
   const [statement, setStatement] = useState<any | null>(null);
+  const [showMonthPayments, setShowMonthPayments] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<PaymentSummary | null>(null);
 
   useEffect(() => {
     const fetchLeaseDetails = async () => {
@@ -809,13 +819,18 @@ export default function LeaseDetailPage() {
                           {financials.payment_summary.length === 0 ? (
                             <div className="text-muted-foreground text-sm">No payments yet.</div>
                           ) : financials.payment_summary.map((month) => (
-                            <div key={month.month} className="flex justify-between items-center">
+                            <button
+                              key={month.month}
+                              className="w-full flex justify-between items-center text-left hover:bg-white/10 rounded-md p-2 transition-colors"
+                              onClick={() => { setSelectedMonth(month); setShowMonthPayments(true); }}
+                              title="View payments for this month"
+                            >
                               <span className="text-muted-foreground">{formatMonth(month.month)}</span>
                               <div className="text-right">
                                 <p className="text-white font-medium">{formatCurrency(month.total_payments)}</p>
                                 <p className="text-sm text-muted-foreground">{month.payment_count} payment(s)</p>
                               </div>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       </CardContent>
@@ -1002,6 +1017,54 @@ export default function LeaseDetailPage() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Month Payments Modal */}
+      {showMonthPayments && selectedMonth && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card/95 rounded-2xl shadow-2xl border border-border/50 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-border/50">
+              <h3 className="text-xl font-semibold text-foreground">Payments for {formatMonth(selectedMonth.month)}</h3>
+              <button className="p-2" onClick={() => { setShowMonthPayments(false); setSelectedMonth(null); }}>Close</button>
+            </div>
+            <div className="p-6">
+              {(!selectedMonth.payments || selectedMonth.payments.length === 0) ? (
+                <div className="text-muted-foreground">No payments found for this month.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-muted-foreground">
+                        <th className="py-2 pr-4">Date</th>
+                        <th className="py-2 pr-4">Method</th>
+                        <th className="py-2 pr-4">Reference</th>
+                        <th className="py-2 pr-4">Invoice</th>
+                        <th className="py-2 pr-0 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedMonth.payments.map((p) => (
+                        <tr key={p.id} className="border-t border-border/50">
+                          <td className="py-2 pr-4">{formatDate(p.payment_date)}</td>
+                          <td className="py-2 pr-4 capitalize">{p.payment_method.replace('_', ' ')}</td>
+                          <td className="py-2 pr-4">{p.reference_number || '-'}</td>
+                          <td className="py-2 pr-4">{p.invoice_number}</td>
+                          <td className="py-2 pr-0 text-right">{formatCurrency(p.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-border/50 text-foreground">
+                        <td className="py-2 pr-4" colSpan={4}>Total</td>
+                        <td className="py-2 pr-0 text-right">{formatCurrency(selectedMonth.total_payments)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 </div>
               )}
             </div>
