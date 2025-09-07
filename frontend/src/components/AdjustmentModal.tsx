@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import { financeApi } from '@/lib/api';
+import { invoiceApi } from '@/lib/api';
 
 interface Invoice {
   id: number;
@@ -54,7 +54,7 @@ const AdjustmentModal: React.FC<AdjustmentModalProps> = ({
     setError(null);
 
     try {
-      const result = await financeApi.createAdjustment({
+      const result = await invoiceApi.createAdjustment({
         invoice_id: invoice.id,
         adjustment_type: adjustmentType,
         amount: parseFloat(amount),
@@ -82,8 +82,9 @@ const AdjustmentModal: React.FC<AdjustmentModalProps> = ({
     const numericAmount = parseFloat(amount);
     if (isNaN(numericAmount)) return 0;
     
+    const currentTotal = Number(invoice.total_amount) || 0;
     if (amountType === 'percentage') {
-      return (invoice.total_amount * numericAmount) / 100;
+      return (currentTotal * numericAmount) / 100;
     }
     
     return numericAmount;
@@ -94,8 +95,9 @@ const AdjustmentModal: React.FC<AdjustmentModalProps> = ({
     
     const adjustmentAmount = calculateAdjustmentAmount();
     const isReduction = adjustmentType === 'waiver' || adjustmentType === 'discount' || adjustmentType === 'credit';
+    const currentTotal = Number(invoice.total_amount) || 0;
     
-    return invoice.total_amount + (isReduction ? -adjustmentAmount : adjustmentAmount);
+    return currentTotal + (isReduction ? -adjustmentAmount : adjustmentAmount);
   };
 
   const validateAdjustment = () => {
@@ -144,7 +146,7 @@ const AdjustmentModal: React.FC<AdjustmentModalProps> = ({
 
     try {
       const adjustmentAmount = calculateAdjustmentAmount();
-      const result = await financeApi.createAdjustment({
+      const result = await invoiceApi.createAdjustment({
         invoice_id: invoice!.id,
         adjustment_type: adjustmentType,
         amount: adjustmentAmount,
@@ -267,8 +269,8 @@ const AdjustmentModal: React.FC<AdjustmentModalProps> = ({
                 <div className="text-sm text-muted-foreground space-y-1">
                   <div><strong>Invoice #:</strong> {invoice.invoice_number}</div>
                   <div><strong>Title:</strong> {invoice.title || 'N/A'}</div>
-                  <div><strong>Current Total:</strong> R{invoice.total_amount.toFixed(2)}</div>
-                  <div><strong>Balance Due:</strong> R{invoice.balance_due.toFixed(2)}</div>
+                  <div><strong>Current Total:</strong> R{(Number(invoice.total_amount) || 0).toFixed(2)}</div>
+                  <div><strong>Balance Due:</strong> R{(Number(invoice.balance_due) || 0).toFixed(2)}</div>
                 </div>
               </div>
 
@@ -408,7 +410,7 @@ const AdjustmentModal: React.FC<AdjustmentModalProps> = ({
                   <div className="text-sm space-y-2">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Current Invoice Total:</span>
-                      <span className="font-medium">R{invoice.total_amount.toFixed(2)}</span>
+                      <span className="font-medium">R{(Number(invoice.total_amount) || 0).toFixed(2)}</span>
                     </div>
                     {amountType === 'percentage' && (
                       <div className="flex justify-between">

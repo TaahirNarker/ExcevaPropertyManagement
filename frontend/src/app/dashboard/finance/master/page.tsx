@@ -214,7 +214,11 @@ export default function MasterFinancePage() {
       // Fetch invoices for adjustment modal
       try {
         const invoicesData = await invoiceApi.getInvoices();
-        setInvoices(Array.isArray(invoicesData) ? invoicesData : []);
+        // Handle both paginated and non-paginated responses safely
+        const extractedInvoices = Array.isArray((invoicesData as any)?.results)
+          ? (invoicesData as any).results
+          : (Array.isArray(invoicesData) ? (invoicesData as any) : []);
+        setInvoices(extractedInvoices);
       } catch (error) {
         console.warn('Failed to fetch invoices:', error);
         setInvoices([]);
@@ -282,6 +286,18 @@ export default function MasterFinancePage() {
           } catch (prefetchError) {
             console.warn('Failed to prefetch leases during initial load:', prefetchError);
             setLeases([]);
+          }
+          
+          // Prefetch invoices so adjustment modal has data on first open
+          try {
+            const invoicesData = await invoiceApi.getInvoices();
+            const extractedInvoices = Array.isArray((invoicesData as any)?.results)
+              ? (invoicesData as any).results
+              : (Array.isArray(invoicesData) ? (invoicesData as any) : []);
+            setInvoices(extractedInvoices);
+          } catch (prefetchError) {
+            console.warn('Failed to prefetch invoices during initial load:', prefetchError);
+            setInvoices([]);
           }
           
         } catch (error) {
