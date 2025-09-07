@@ -1707,48 +1707,76 @@ class PaymentReconciliationViewSet(viewsets.ViewSet):
         Get comprehensive tenant statement
         """
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            try:
+                logger.setLevel(logging.INFO)
+            except Exception:
+                pass
+
             # Validate tenant ID
             try:
                 tenant_id = int(tenant_id)
             except ValueError:
+                logger.warning("[tenant-statement] invalid tenant_id=%s", tenant_id)
                 return Response({
                     'success': False,
                     'error': 'Invalid tenant ID'
                 }, status=400)
-            
-            # Get date range from query params
+
+            # Optional lease for precise resolution
+            lease_id = request.query_params.get('lease_id')
+            if lease_id:
+                try:
+                    lease_id = int(lease_id)
+                except ValueError:
+                    logger.warning("[tenant-statement] bad lease_id=%s tenant_id=%s", lease_id, tenant_id)
+                    lease_id = None
+
+            # Dates
             start_date = request.query_params.get('start_date')
             end_date = request.query_params.get('end_date')
-            
-            # Parse dates if provided
+
             if start_date:
                 try:
                     start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
                 except ValueError:
+                    logger.warning("[tenant-statement] bad start_date=%s tenant_id=%s", start_date, tenant_id)
                     return Response({
                         'success': False,
                         'error': 'Invalid start_date format. Use YYYY-MM-DD'
                     }, status=400)
-            
+
             if end_date:
                 try:
                     end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
                 except ValueError:
+                    logger.warning("[tenant-statement] bad end_date=%s tenant_id=%s", end_date, tenant_id)
                     return Response({
                         'success': False,
                         'error': 'Invalid end_date format. Use YYYY-MM-DD'
                     }, status=400)
-            
-            # Get statement using service
+
+            logger.warning("[tenant-statement] start tenant_id=%s lease_id=%s start=%s end=%s",
+                        tenant_id, lease_id, start_date, end_date)
+
+            # Call service
             service = PaymentReconciliationService()
-            result = service.get_tenant_statement(tenant_id, start_date, end_date)
-            
+            result = service.get_tenant_statement(tenant_id, start_date, end_date, lease_id=lease_id)
+
+            logger.warning("[tenant-statement] result success=%s error=%s",
+                        result.get('success'), result.get('error'))
+            if result.get('debug'):
+                logger.warning("[tenant-statement] debug=%s", result['debug'])
+
             if result['success']:
                 return Response(result, status=200)
             else:
                 return Response(result, status=400)
-                
+
         except Exception as e:
+            import traceback, logging
+            logging.getLogger(__name__).error("[tenant-statement] exception=%s\n%s", str(e), traceback.format_exc())
             return Response({
                 'success': False,
                 'error': f'Statement generation failed: {str(e)}'

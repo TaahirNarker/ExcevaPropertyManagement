@@ -1497,7 +1497,7 @@ class PaymentReconciliationService:
                 'error': str(e)
             }
     
-    def get_tenant_statement(self, tenant_id, start_date=None, end_date=None):
+    def get_tenant_statement(self, tenant_id, start_date=None, end_date=None, lease_id=None):
         """
         Generate comprehensive tenant statement
         
@@ -1510,26 +1510,78 @@ class PaymentReconciliationService:
             dict: Complete tenant statement
         """
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            try:
+                logger.setLevel(logging.INFO)
+            except Exception:
+                pass
             from tenants.models import Tenant
             from leases.models import Lease
             from .models import Invoice, ManualPayment, Adjustment
             
             tenant = Tenant.objects.get(id=tenant_id)
+            # Safely derive a displayable tenant name without changing response keys
+            try:
+                tenant_name = getattr(tenant, 'name', None) or tenant.user.get_full_name() or tenant.user.username
+            except Exception:
+                tenant_name = str(getattr(tenant.user, 'username', tenant_id))
+            resolved = {'input_tenant_id': tenant_id, 'input_lease_id': lease_id}
             
-            # Get active lease
-            lease = Lease.objects.filter(tenant=tenant, status='active').first()
-            if not lease:
-                return {'success': False, 'error': 'No active lease found for tenant'}
+            # Resolve lease: prefer explicit lease_id, else active, else latest lease by start_date
+            lease = None
+            if lease_id:
+                try:
+                    lease = Lease.objects.get(id=lease_id)
+                except Lease.DoesNotExist:
+                    return {'success': False, 'error': 'Lease not found'}
+                # Optional safety: ensure tenant matches
+                if lease.tenant_id != tenant.id:
+                    return {'success': False, 'error': 'Lease does not belong to tenant'}
+            else:
+                lease = Lease.objects.filter(tenant=tenant, status='active').first()
+                if not lease:
+                    lease = Lease.objects.filter(tenant=tenant).order_by('-start_date').first()
+                    if not lease:
+                        return {'success': False, 'error': 'No lease found for tenant'}
+            # Update resolution debug info
+            try:
+                resolved.update({'resolved_lease_id': lease.id, 'lease_status': getattr(lease, 'status', None)})
+            except Exception:
+                pass
             
-            # Set default date range if not provided
+            # Set default date range if not provided and normalize to date objects
             if not start_date:
                 start_date = timezone.now().date().replace(day=1)
             if not end_date:
                 end_date = timezone.now().date()
             
-            # Get invoices for period
+            # Compute opening balance (everything prior to period start)
+            from .models import InvoicePayment as _InvoicePayment
+            opening_invoices = Invoice.objects.filter(
+                lease=lease,
+                issue_date__isnull=False,
+                issue_date__lt=start_date
+            )
+            opening_payments = _InvoicePayment.objects.filter(
+                invoice__lease=lease,
+                payment_date__lt=start_date
+            )
+            opening_adjustments = Adjustment.objects.filter(
+                invoice__lease=lease,
+                effective_date__lt=start_date
+            )
+
+            opening_balance = (
+                sum((inv.total_amount for inv in opening_invoices), Decimal('0.00'))
+                - sum((p.amount for p in opening_payments), Decimal('0.00'))
+                + sum((adj.amount for adj in opening_adjustments), Decimal('0.00'))
+            )
+
+            # Get invoices for period (ignore null issue dates)
             invoices = Invoice.objects.filter(
                 lease=lease,
+                issue_date__isnull=False,
                 issue_date__gte=start_date,
                 issue_date__lte=end_date
             ).order_by('issue_date')
@@ -1542,7 +1594,6 @@ class PaymentReconciliationService:
             ).order_by('payment_date')
 
             # Get allocated invoice payments for period (canonical entries used in financial views)
-            from .models import InvoicePayment as _InvoicePayment
             invoice_payments = _InvoicePayment.objects.filter(
                 invoice__lease=lease,
                 payment_date__gte=start_date,
@@ -1555,12 +1606,23 @@ class PaymentReconciliationService:
                 effective_date__gte=start_date,
                 effective_date__lte=end_date
             ).order_by('effective_date')
+
+            # Structured count log for diagnostics
+            try:
+                logger.warning(
+                    "[statement] tenant_id=%s lease_id=%s period=%s..%s counts invoices=%s payments=%s adjustments=%s opening=%s",
+                    tenant_id, lease.id, start_date, end_date,
+                    invoices.count(), invoice_payments.count(), adjustments.count(),
+                    float(opening_balance)
+                )
+            except Exception:
+                pass
             
-            # Calculate summary
-            total_charges = sum(inv.total_amount for inv in invoices)
+            # Calculate period totals
+            total_charges = sum((inv.total_amount for inv in invoices), Decimal('0.00'))
             # Use InvoicePayment totals for accuracy (allocations reflect true application of funds)
-            total_payments = sum(p.amount for p in invoice_payments)
-            total_adjustments = sum(adj.amount for adj in adjustments)
+            total_payments = sum((p.amount for p in invoice_payments), Decimal('0.00'))
+            total_adjustments = sum((adj.amount for adj in adjustments), Decimal('0.00'))
             
             # Get outstanding invoices
             outstanding_invoices = Invoice.objects.filter(
@@ -1573,6 +1635,19 @@ class PaymentReconciliationService:
             
             # Build transaction history
             transactions = []
+
+            # Add opening balance row first (synthetic)
+            transactions.append({
+                'date': start_date,
+                'type': 'opening_balance',
+                'description': 'Opening balance',
+                'reference': '',
+                'charges': 0.0,
+                'payments': 0.0,
+                'adjustments': 0.0,
+                'payment_method': '',
+                'balance': float(opening_balance)
+            })
             
             # Add invoices
             for invoice in invoices:
@@ -1584,7 +1659,7 @@ class PaymentReconciliationService:
                     'charges': float(invoice.total_amount),
                     'payments': 0,
                     'adjustments': 0,
-                    'balance': float(invoice.balance_due)
+                    'balance': 0  # running balance will be computed after sorting
                 })
             
             # Add allocated invoice payments (reflected in financial sections and balances)
@@ -1597,6 +1672,7 @@ class PaymentReconciliationService:
                     'charges': 0,
                     'payments': float(pay.amount),
                     'adjustments': 0,
+                    'payment_method': pay.payment_method,
                     'balance': 0
                 })
 
@@ -1628,24 +1704,40 @@ class PaymentReconciliationService:
             
             # Sort transactions by date
             transactions.sort(key=lambda x: x['date'])
-            
-            # Calculate running balance
-            balance = 0
+
+            # Calculate running balance starting from opening balance
+            balance = float(opening_balance)
             for transaction in transactions:
                 balance += transaction['charges'] - transaction['payments'] + transaction['adjustments']
                 transaction['balance'] = balance
             
+            # Compute closing/outstanding/credit
+            closing_balance = Decimal(str(opening_balance)) + Decimal(str(total_charges)) - Decimal(str(total_payments)) + Decimal(str(total_adjustments))
+            outstanding_balance = max(Decimal('0.00'), closing_balance)
+            overpayment_credit = max(Decimal('0.00'), -closing_balance)
+
+            # Deposit details
+            deposit_held = Decimal(str(lease.deposit_amount or 0))
+            deposit_deductions = sum((adj.amount for adj in adjustments if getattr(adj, 'adjustment_type', '') == 'deposit_deduction'), Decimal('0.00'))
+
             return {
                 'success': True,
                 'tenant': {
                     'id': tenant.id,
-                    'name': tenant.name,
+                    'name': tenant_name,
                     'email': tenant.email
+                },
+                'property': {
+                    'name': getattr(lease.property, 'name', 'N/A') or 'N/A',
+                    'address': getattr(lease.property, 'address', '') or ''
                 },
                 'lease': {
                     'id': lease.id,
-                    'unit': lease.property.unit_number if lease.property else 'N/A',
-                    'monthly_rent': float(lease.monthly_rent)
+                    # Use a safe attribute for display: prefer property name; avoid non-existent unit_number
+                    'unit': (getattr(lease.property, 'name', None) or 'N/A'),
+                    'monthly_rent': float(lease.monthly_rent),
+                    'start_date': lease.start_date,
+                    'end_date': lease.end_date
                 },
                 'statement_period': {
                     'start_date': start_date,
@@ -1654,18 +1746,26 @@ class PaymentReconciliationService:
                 },
                 'notes': [
                     'Draft invoices (without an issue_date) may be excluded from date-bound summaries.',
-                    'Payments reflect allocations (InvoicePayment) to ensure balances match lease financials.'
+                    'Payments reflect allocations (InvoicePayment) to ensure balances match lease financials.',
+                    'Opening balance includes activity prior to the selected period.'
                 ],
                 'summary': {
-                    'opening_balance': 0,  # Could be enhanced to track previous balance
-                    'total_charges': total_charges,
-                    'total_payments': total_payments,
-                    'total_adjustments': total_adjustments,
-                    'closing_balance': balance,
-                    'credit_balance': max(0, -balance) if balance < 0 else 0,
-                    'overdue_amount': overdue_amount
+                    'opening_balance': float(opening_balance),
+                    'total_charges': float(total_charges),
+                    'total_rent_due': float(total_charges),
+                    'total_payments': float(total_payments),
+                    'total_adjustments': float(total_adjustments),
+                    'closing_balance': float(closing_balance),
+                    'outstanding_balance': float(outstanding_balance),
+                    'overpayment_credit': float(overpayment_credit),
+                    'credit_balance': float(overpayment_credit),
+                    'overdue_amount': float(sum((inv.balance_due for inv in outstanding_invoices if inv.due_date < timezone.now().date()), Decimal('0.00')))
                 },
                 'transactions': transactions,
+                'deposit': {
+                    'held': float(deposit_held),
+                    'deductions': float(deposit_deductions)
+                },
                 'outstanding_invoices': [
                     {
                         'invoice_id': inv.id,
@@ -1675,11 +1775,12 @@ class PaymentReconciliationService:
                         'days_overdue': (timezone.now().date() - inv.due_date).days if inv.due_date < timezone.now().date() else 0
                     }
                     for inv in outstanding_invoices
-                ]
+                ],
+                'debug': resolved
             }
             
         except Tenant.DoesNotExist:
             return {'success': False, 'error': 'Tenant not found'}
         except Exception as e:
-            self.logger.error(f"Tenant statement generation failed: {e}")
+            self.logger.error("[statement] exception=%s", str(e))
             return {'success': False, 'error': str(e)}
