@@ -1344,6 +1344,19 @@ export const invoiceApi = {
     return response.data;
   },
 
+  // Lease-based statement endpoint using real backend data
+  getLeaseStatement: async (
+    leaseId: number,
+    startDate?: string,
+    endDate?: string
+  ): Promise<any> => {
+    const params: any = {};
+    if (startDate) params.start_date = startDate;
+    if (endDate) params.end_date = endDate;
+    const response = await api.get(`/finance/payment-reconciliation/lease-statement/${leaseId}/`, { params });
+    return response.data;
+  },
+
   getUnmatchedPayments: async (): Promise<{
     success: boolean;
     unmatched_transactions: Array<{

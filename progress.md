@@ -1,3 +1,9 @@
+### Lease Statement Redesign
+
+- Added backend endpoint: `GET /finance/payment-reconciliation/lease-statement/<lease_id>/` with start/end date support; reuses existing service for running/opening balance.
+- Added frontend route `frontend/src/app/dashboard/leases/[id]/statement/page.tsx` rendering A4 print layout, table, totals, and payment block.
+- Added API client method `invoiceApi.getLeaseStatement`.
+- Added print CSS via global style block to enforce A4 page size and repeat headers during print.
 2025-09-08: Added Account Status to leases list. Backend annotations compute `balance_cents` from invoices/payments and serializer exposes `financial_status`. Frontend `/dashboard/leases` renders a status badge with accessible amount tooltip.
 # Lease Details Screen Development Progress
 

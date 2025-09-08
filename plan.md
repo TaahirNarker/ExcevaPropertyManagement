@@ -1,3 +1,9 @@
+## Lease Statement Redesign Plan
+
+- Backend: add lease-based statement endpoint that reuses existing statement service to avoid duplication and ensure running balance server-side.
+- Frontend: add dedicated A4 print-optimized route `dashboard/leases/[id]/statement` rendering professional layout matching sample.
+- Print/PDF: use CSS `@media print` with A4 page size and repeated headers; browser print to PDF for fidelity.
+- Tests: backend unit tests for running/opening balances and adjustments; basic frontend render smoke test.
 ## Feature: Lease Account Status Column
 
 Goal: Add an "Account Status" column on `/dashboard/leases` showing if a tenant is Up to Date, In Debt, or In Credit for the lease, with numeric balance available.

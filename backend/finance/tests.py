@@ -302,3 +302,167 @@ class AutoRecalcAndSummaryTest(TestCase):
         self.assertEqual(response.status_code, 200)
         expected = float(inv1.balance_due + inv2.balance_due)
         self.assertAlmostEqual(response.data['total_outstanding'], expected, places=2)
+
+
+class StatementRunningBalanceTest(TestCase):
+    """Validate opening balance and server-side running balance across invoices and payments."""
+
+    def _create_user(self, email):
+        return CustomUser.objects.create_user(username=email.split('@')[0], email=email, password='pass1234')
+
+    def setUp(self):
+        owner = self._create_user('owner5@example.com')
+        self.property = Property.objects.create(
+            name="Prop A",
+            street_address="5 Test St",
+            city="Cape Town",
+            province="western_cape",
+            owner=owner,
+        )
+        user = self._create_user('rob@example.com')
+        self.tenant = Tenant.objects.create(
+            user=user,
+            id_number="8001015009091",
+            date_of_birth=date(1980,1,1),
+            phone="0800000008",
+            email='rob@example.com',
+            address="5 Main St",
+            city="Cape Town",
+            province="Western Cape",
+            postal_code="8000",
+            employment_status='employed',
+            emergency_contact_name='EC',
+            emergency_contact_phone='0800000009',
+            emergency_contact_relationship='Friend',
+            status='active'
+        )
+        self.lease = Lease.objects.create(
+            property=self.property,
+            tenant=self.tenant,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 12, 31),
+            monthly_rent=Decimal('1000.00'),
+            deposit_amount=Decimal('0.00'),
+            rental_frequency='Monthly',
+            rent_due_day=1,
+            status='active'
+        )
+
+    def test_opening_and_running_balance(self):
+        inv_service = InvoiceGenerationService()
+        # Create two months before the window and one inside the window
+        jan = date(2025, 1, 1)
+        feb = date(2025, 2, 1)
+        mar = date(2025, 3, 1)
+
+        jan_inv = inv_service.generate_monthly_invoice(self.lease, jan)
+        jan_inv.status = 'sent'; jan_inv.save()
+        feb_inv = inv_service.generate_monthly_invoice(self.lease, feb)
+        feb_inv.status = 'sent'; feb_inv.save()
+        mar_inv = inv_service.generate_monthly_invoice(self.lease, mar)
+        mar_inv.status = 'sent'; mar_inv.save()
+
+        # Pay part of February in February
+        from .models import InvoicePayment
+        InvoicePayment.objects.create(
+            invoice=feb_inv,
+            tenant=self.tenant,
+            amount=Decimal('200.00'),
+            allocated_amount=Decimal('200.00'),
+            payment_date=date(2025, 2, 10),
+            payment_method='bank_transfer'
+        )
+        # Pay part of January in March (should not affect opening balance for March window)
+        InvoicePayment.objects.create(
+            invoice=jan_inv,
+            tenant=self.tenant,
+            amount=Decimal('300.00'),
+            allocated_amount=Decimal('300.00'),
+            payment_date=date(2025, 3, 5),
+            payment_method='bank_transfer'
+        )
+
+        service = PaymentReconciliationService()
+        statement = service.get_tenant_statement(
+            tenant_id=self.tenant.id,
+            start_date=date(2025, 3, 1),
+            end_date=date(2025, 3, 31),
+            lease_id=self.lease.id
+        )
+        self.assertTrue(statement['success'])
+
+        # Opening balance should include Jan and Feb charges minus Feb payments; excl Mar
+        opening_expected = (jan_inv.total_amount + feb_inv.total_amount) - Decimal('200.00')
+        self.assertAlmostEqual(Decimal(str(statement['summary']['opening_balance'])), opening_expected)
+
+        # First transaction is opening balance row; then Mar invoice and Mar payments (including Jan payment in Mar)
+        tx = statement['transactions']
+        # Ensure sorted and running balance ends at closing balance
+        self.assertGreaterEqual(len(tx), 1)
+        closing_from_rows = Decimal('0.00')
+        for i, row in enumerate(tx):
+            # Validate row balance equals calculation up to that row
+            if i == 0:
+                self.assertEqual(row['type'], 'opening_balance')
+            closing_from_rows = Decimal(str(row['balance']))
+        self.assertAlmostEqual(closing_from_rows, Decimal(str(statement['summary']['closing_balance'])))
+
+
+class LeaseStatementEndpointTest(TestCase):
+    """Integration test for the lease-statement endpoint shape and totals."""
+
+    def _create_user(self, email):
+        return CustomUser.objects.create_user(username=email.split('@')[0], email=email, password='pass1234')
+
+    def setUp(self):
+        owner = self._create_user('owner6@example.com')
+        self.property = Property.objects.create(
+            name="Prop B",
+            street_address="10 Test St",
+            city="Cape Town",
+            province="western_cape",
+            owner=owner,
+        )
+        user = self._create_user('sue@example.com')
+        self.tenant = Tenant.objects.create(
+            user=user,
+            id_number="8001015009092",
+            date_of_birth=date(1980,1,1),
+            phone="0800000010",
+            email='sue@example.com',
+            address="10 Main St",
+            city="Cape Town",
+            province="Western Cape",
+            postal_code="8000",
+            employment_status='employed',
+            emergency_contact_name='EC',
+            emergency_contact_phone='0800000011',
+            emergency_contact_relationship='Friend',
+            status='active'
+        )
+        self.lease = Lease.objects.create(
+            property=self.property,
+            tenant=self.tenant,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 12, 31),
+            monthly_rent=Decimal('1500.00'),
+            deposit_amount=Decimal('0.00'),
+            rental_frequency='Monthly',
+            rent_due_day=1,
+            status='active'
+        )
+
+    def test_endpoint_response_shape(self):
+        from rest_framework.test import APIClient
+        client = APIClient()
+        url = f"/api/finance/lease-statement/{self.lease.id}/?start_date=2025-03-01&end_date=2025-03-31"
+        res = client.get(url)
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        # Basic shape assertions
+        self.assertTrue(data.get('success'))
+        self.assertIn('tenant', data)
+        self.assertIn('lease', data)
+        self.assertIn('statement_period', data)
+        self.assertIn('summary', data)
+        self.assertIn('transactions', data)

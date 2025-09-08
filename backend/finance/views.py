@@ -1781,6 +1781,81 @@ class PaymentReconciliationViewSet(viewsets.ViewSet):
                 'success': False,
                 'error': f'Statement generation failed: {str(e)}'
             }, status=500)
+
+    @action(detail=False, methods=['get'], url_path='lease-statement/(?P<lease_id>[^/.]+)')
+    def get_lease_statement(self, request, lease_id=None):
+        """
+        Get comprehensive statement for a specific lease id with optional start_date/end_date.
+
+        Query params:
+          - start_date: YYYY-MM-DD (optional)
+          - end_date: YYYY-MM-DD (optional)
+
+        Notes:
+          - This delegates to the PaymentReconciliationService.get_tenant_statement to ensure
+            running balance and opening balance calculations are consistent with tenant statements.
+          - We pass lease_id through to restrict the scope explicitly to the provided lease.
+        """
+        try:
+            # Validate lease id
+            try:
+                lease_id_int = int(lease_id)
+            except (TypeError, ValueError):
+                return Response({'success': False, 'error': 'Invalid lease ID'}, status=400)
+
+            # Parse optional dates
+            start_date = request.query_params.get('start_date') or request.query_params.get('start')
+            end_date = request.query_params.get('end_date') or request.query_params.get('end')
+
+            from datetime import datetime as _dt
+            parsed_start = None
+            parsed_end = None
+            if start_date:
+                try:
+                    parsed_start = _dt.strptime(start_date, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response({'success': False, 'error': 'Invalid start_date. Use YYYY-MM-DD'}, status=400)
+            if end_date:
+                try:
+                    parsed_end = _dt.strptime(end_date, '%Y-%m-%d').date()
+                except ValueError:
+                    return Response({'success': False, 'error': 'Invalid end_date. Use YYYY-MM-DD'}, status=400)
+
+            # Resolve tenant from lease
+            try:
+                lease_obj = Lease.objects.select_related('tenant', 'property').get(id=lease_id_int)
+            except Lease.DoesNotExist:
+                return Response({'success': False, 'error': 'Lease not found'}, status=404)
+
+            service = PaymentReconciliationService()
+            result = service.get_tenant_statement(
+                tenant_id=lease_obj.tenant_id,
+                start_date=parsed_start,
+                end_date=parsed_end,
+                lease_id=lease_obj.id
+            )
+
+            # Optionally enrich with header/payment blocks if available without introducing mock data
+            # We surface bank details if present on the most recent sent/paid invoice for the lease.
+            try:
+                latest_invoice = Invoice.objects.filter(lease=lease_obj).exclude(bank_info__isnull=True).exclude(bank_info__exact='').order_by('-issue_date', '-created_at').first()
+                bank_details = latest_invoice.bank_info if latest_invoice else ''
+            except Exception:
+                bank_details = ''
+
+            if result.get('success'):
+                # Inject minimal additional fields expected by UI if available
+                result['company'] = {
+                    # These can be extended later to include registration/VAT numbers if stored in settings
+                    'name': getattr(lease_obj.property, 'name', '') or 'Property Management',
+                    'address': getattr(lease_obj.property, 'address', '') or ''
+                }
+                result['bank_details'] = bank_details
+                return Response(result, status=200)
+            else:
+                return Response(result, status=400)
+        except Exception as e:
+            return Response({'success': False, 'error': f'Lease statement failed: {str(e)}'}, status=500)
     
     @action(detail=False, methods=['get'], url_path='unmatched-payments')
     def get_unmatched_payments(self, request):

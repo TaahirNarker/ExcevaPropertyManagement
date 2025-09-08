@@ -1,3 +1,9 @@
+[] Implement lease statement backend endpoint (done)
+[] Implement A4 statement page and print styles (in progress)
+[] Wire real data and ensure no mock usage (in progress)
+[] Add backend tests for running/opening balances and adjustments
+[] Add frontend smoke test for statement render
+[] Verify print preview fidelity and header repetition
 [] Verify lease account status balances in staging with sample data
 [] Consider caching balance on lease for heavy datasets (future)
 [] Add unit tests for balance/status mapping when test harness is active

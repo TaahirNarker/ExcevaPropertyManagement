@@ -39,6 +39,7 @@ urlpatterns = [
     path('allocate-payment/', PaymentReconciliationViewSet.as_view({'post': 'allocate_payment'}), name='allocate-payment'),
     path('create-adjustment/', PaymentReconciliationViewSet.as_view({'post': 'create_adjustment'}), name='create-adjustment'),
     path('tenant-statement/<int:tenant_id>/', PaymentReconciliationViewSet.as_view({'get': 'get_tenant_statement'}), name='tenant-statement'),
+    path('lease-statement/<int:lease_id>/', PaymentReconciliationViewSet.as_view({'get': 'get_lease_statement'}), name='lease-statement'),
     path('unmatched-payments/', PaymentReconciliationViewSet.as_view({'get': 'get_unmatched_payments'}), name='unmatched-payments'),
     path('payment-status/<int:payment_id>/', PaymentReconciliationViewSet.as_view({'get': 'get_payment_status'}), name='payment-status'),
 ] 

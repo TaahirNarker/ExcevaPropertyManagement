@@ -262,14 +262,8 @@ export default function LeaseDetailPage() {
 
   const openStatement = async () => {
     if (!lease) return;
-    try {
-      setShowStatement(true);
-      const data = await invoiceApi.getTenantStatement(lease.tenant.id);
-      setStatement(data);
-    } catch (e: any) {
-      toast.error('Failed to load statement');
-      setStatement(null);
-    }
+    // Navigate to the new A4 statement page for this lease (print-ready)
+    router.push(`/dashboard/leases/${lease.id}/statement`);
   };
 
   const formatCurrency = (amount: number) => {
