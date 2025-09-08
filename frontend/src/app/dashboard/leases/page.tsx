@@ -46,6 +46,9 @@ interface Lease {
   created_at: string;
   updated_at: string;
   attachments_count: number;
+  // New backend-computed fields
+  balance_cents?: number;
+  financial_status?: 'UP_TO_DATE' | 'IN_DEBT' | 'IN_CREDIT';
 }
 
 // API response interface
@@ -382,6 +385,9 @@ export default function LeasesDashboardPage() {
                     Financials
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                    Account Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">
@@ -458,6 +464,29 @@ export default function LeasesDashboardPage() {
                             Deposit: {formatCurrency(lease.deposit_amount)}
                           </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {(() => {
+                          const cents = lease.balance_cents ?? 0;
+                          const status = lease.financial_status ?? (cents === 0 ? 'UP_TO_DATE' : cents > 0 ? 'IN_CREDIT' : 'IN_DEBT');
+                          const label = status === 'UP_TO_DATE' ? 'Up to Date' : status === 'IN_DEBT' ? 'In Debt' : 'In Credit';
+                          const color = status === 'UP_TO_DATE' ? 'bg-gray-100 text-gray-800 border-gray-200' : status === 'IN_DEBT' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-green-100 text-green-800 border-green-200';
+                          const amount = cents / 100;
+                          const amountText = `${label}: ${formatCurrency(Math.abs(amount))}`;
+                          return (
+                            <div className="relative inline-block group" aria-label={amountText}>
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${color}`}
+                              >
+                                {label}
+                              </span>
+                              {/* Tooltip */}
+                              <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 mt-2 z-10 whitespace-nowrap rounded-md bg-black/80 text-white text-xs px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {amountText}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4">
                         {renderStatusBadge(lease.status)}

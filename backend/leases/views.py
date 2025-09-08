@@ -4,12 +4,16 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
+from django.db.models import Sum, IntegerField, DecimalField
+from django.db.models.functions import Coalesce, Cast
+from django.db.models.expressions import ExpressionWrapper, Value
 from .models import Lease, LeaseAttachment, LeaseNote
 from .serializers import (
     LeaseSerializer, LeaseCreateSerializer, LeaseUpdateSerializer,
     LeaseAttachmentSerializer, LeaseAttachmentCreateSerializer, LeaseAttachmentUpdateSerializer,
     LeaseNoteSerializer, LeaseNoteCreateSerializer
 )
+from decimal import Decimal
 
 
 class LeaseListView(generics.ListCreateAPIView):
@@ -29,7 +33,48 @@ class LeaseListView(generics.ListCreateAPIView):
         return LeaseSerializer
     
     def get_queryset(self):
-        return Lease.objects.select_related('tenant__user', 'property', 'landlord').all()
+        """
+        Base queryset for leases with financial annotations for list view.
+        Adds per-lease computed fields:
+          - balance_cents (int): payments minus charges in cents
+        Computation rules:
+          - Charges come from related invoices' total_amount, excluding draft/cancelled
+          - Payments are the sum of PaymentAllocation.allocated_amount for those invoices
+        This keeps a single round-trip to the database via annotations.
+        """
+        # Decimal zero for safe arithmetic in annotations
+        zero_dec = Value(Decimal('0.00'), output_field=DecimalField(max_digits=14, decimal_places=2))
+
+        # Sum of invoice totals per lease (exclude non-posted statuses)
+        total_charges = Coalesce(
+            Sum(
+                'invoices__total_amount',
+                filter=~Q(invoices__status__in=['draft', 'cancelled'])
+            ),
+            zero_dec,
+        )
+
+        # Sum of allocated payments across invoices for this lease
+        total_payments = Coalesce(
+            Sum('invoices__payment_allocations__allocated_amount'),
+            zero_dec,
+        )
+
+        # Convert (payments - charges) to integer cents
+        balance_cents_expr = Cast(
+            ExpressionWrapper(
+                (total_payments - total_charges) * Value(100),
+                output_field=DecimalField(max_digits=18, decimal_places=2)
+            ),
+            IntegerField()
+        )
+
+        return (
+            Lease.objects
+            .select_related('tenant__user', 'property', 'landlord')
+            .annotate(balance_cents=balance_cents_expr)
+            .all()
+        )
     
     def create(self, request, *args, **kwargs):
         try:

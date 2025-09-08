@@ -1,3 +1,4 @@
+2025-09-08: Added Account Status to leases list. Backend annotations compute `balance_cents` from invoices/payments and serializer exposes `financial_status`. Frontend `/dashboard/leases` renders a status badge with accessible amount tooltip.
 # Lease Details Screen Development Progress
 
 ## ✅ Completed Features

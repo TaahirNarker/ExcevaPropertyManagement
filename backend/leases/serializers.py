@@ -7,11 +7,14 @@ class LeaseSerializer(serializers.ModelSerializer):
     tenant = serializers.SerializerMethodField()
     property = serializers.SerializerMethodField()
     attachments_count = serializers.SerializerMethodField()
+    # Financial computed fields for dashboard consumption
+    balance_cents = serializers.IntegerField(read_only=True)
+    financial_status = serializers.SerializerMethodField()
     
     class Meta:
         model = Lease
         fields = '__all__'
-        read_only_fields = ['attachments_count']
+        read_only_fields = ['attachments_count', 'balance_cents']
     
     def get_tenant(self, obj):
         try:
@@ -69,6 +72,23 @@ class LeaseSerializer(serializers.ModelSerializer):
         except Exception as e:
             print(f"Error getting attachments count for lease {obj.id}: {e}")
             return 0
+
+    def get_financial_status(self, obj):
+        """
+        Map balance_cents to a coarse status for UI badges.
+          - 0 => UP_TO_DATE
+          - <0 => IN_DEBT (owes money)
+          - >0 => IN_CREDIT (has credit)
+        """
+        try:
+            balance_cents = getattr(obj, 'balance_cents', None)
+            if balance_cents is None:
+                return 'UP_TO_DATE'
+            if balance_cents == 0:
+                return 'UP_TO_DATE'
+            return 'IN_CREDIT' if balance_cents > 0 else 'IN_DEBT'
+        except Exception:
+            return 'UP_TO_DATE'
 
 
 class LeaseUpdateSerializer(serializers.ModelSerializer):

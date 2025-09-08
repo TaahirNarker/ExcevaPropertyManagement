@@ -1,3 +1,6 @@
+[] Verify lease account status balances in staging with sample data
+[] Consider caching balance on lease for heavy datasets (future)
+[] Add unit tests for balance/status mapping when test harness is active
 # TODO List
 
 ## ✅ COMPLETED (July 11, 2025)
