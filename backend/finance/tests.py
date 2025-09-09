@@ -539,3 +539,58 @@ class InitialInvoiceOnLeaseCreationTest(TestCase):
         )
         self.assertTrue(statement['success'])
         self.assertGreater(statement['summary']['closing_balance'], 0.0)
+
+
+class InitialInvoiceIssueDateTest(TestCase):
+    """Verify initial invoice issue_date matches lease.invoice_date (or billing_start fallback)."""
+
+    def _create_user(self, email):
+        return CustomUser.objects.create_user(username=email.split('@')[0], email=email, password='pass1234')
+
+    def setUp(self):
+        owner = self._create_user('owner8@example.com')
+        self.property = Property.objects.create(
+            name="IssueDate Prop",
+            street_address="100 Test St",
+            city="Cape Town",
+            province="western_cape",
+            owner=owner,
+        )
+        tenant_user = self._create_user('issue@example.com')
+        self.tenant = Tenant.objects.create(
+            user=tenant_user,
+            id_number="8001015009094",
+            date_of_birth=date(1980,1,1),
+            phone="0800000014",
+            email='issue@example.com',
+            address="100 Main St",
+            city="Cape Town",
+            province="Western Cape",
+            postal_code="8000",
+            employment_status='employed',
+            emergency_contact_name='EC',
+            emergency_contact_phone='0800000015',
+            emergency_contact_relationship='Friend',
+            status='active'
+        )
+
+    def test_issue_date_aligns_with_lease(self):
+        today = timezone.now().date()
+        first_of_month = today.replace(day=1)
+
+        lease = Lease.objects.create(
+            property=self.property,
+            tenant=self.tenant,
+            start_date=first_of_month,
+            end_date=first_of_month.replace(year=first_of_month.year + 1),
+            monthly_rent=Decimal('1234.56'),
+            deposit_amount=Decimal('1000.00'),
+            rental_frequency='Monthly',
+            rent_due_day=1,
+            invoice_date=first_of_month,
+            status='active'
+        )
+
+        from .services import InvoiceGenerationService
+        inv = InvoiceGenerationService().generate_initial_lease_invoice(lease, user=None)
+        self.assertEqual(inv.issue_date, first_of_month)

@@ -83,6 +83,12 @@ class InvoiceGenerationService:
             except Exception:
                 landlord_user = None
 
+            # Determine correct issue date for initial invoice: prefer explicit lease.invoice_date, else month start
+            try:
+                desired_issue_date = getattr(lease, 'invoice_date', None) or billing_start
+            except Exception:
+                desired_issue_date = billing_start
+
             invoice = Invoice.objects.create(
                 lease=lease,
                 property=lease.property,
@@ -91,7 +97,7 @@ class InvoiceGenerationService:
                 created_by=user,
                 invoice_number=self.generate_invoice_number(),
                 title=f"Initial Invoice - {lease.property.name}",
-                issue_date=timezone.now().date(),
+                issue_date=desired_issue_date,
                 due_date=start_date,
                 billing_period_start=billing_start,
                 billing_period_end=billing_end,
