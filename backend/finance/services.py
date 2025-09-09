@@ -58,8 +58,13 @@ class InvoiceGenerationService:
         """
         Generate the initial invoice when a lease is created.
         Includes first month's rent, deposit, and any admin/setup fees.
+        Also carries over any previous arrears to ensure first statement reflects them.
         """
         with transaction.atomic():
+            try:
+                print(f"[igs.initial] start lease_id={lease.id} start_date={lease.start_date} rent_due_day={getattr(lease, 'rent_due_day', None)} monthly_rent={getattr(lease, 'monthly_rent', None)} deposit={getattr(lease, 'deposit_amount', None)}")
+            except Exception:
+                pass
             # Calculate billing period (first month)
             start_date = lease.start_date
             if start_date.day == 1:
@@ -72,11 +77,17 @@ class InvoiceGenerationService:
                 billing_end = self._get_month_end(start_date)
             
             # Create the invoice
+            # Resolve landlord user for invoice: prefer property.owner (CustomUser). Avoid passing Landlords.Landlord.
+            try:
+                landlord_user = getattr(lease.property, 'owner', None)
+            except Exception:
+                landlord_user = None
+
             invoice = Invoice.objects.create(
                 lease=lease,
                 property=lease.property,
                 tenant=lease.tenant,
-                landlord=lease.landlord,
+                landlord=landlord_user,
                 created_by=user,
                 invoice_number=self.generate_invoice_number(),
                 title=f"Initial Invoice - {lease.property.name}",
@@ -90,6 +101,23 @@ class InvoiceGenerationService:
             
             # Add line items
             line_items = []
+
+            # 0) Arrears carry-over from any previous invoices before this billing period
+            from .models import Invoice as InvoiceModel
+            previous_unpaid = InvoiceModel.objects.filter(
+                tenant=lease.tenant,
+                status__in=['sent', 'overdue', 'partially_paid'],
+                balance_due__gt=0,
+                due_date__lt=billing_start
+            ).aggregate(total_due=Sum('balance_due'))['total_due'] or Decimal('0.00')
+            if previous_unpaid > 0:
+                line_items.append({
+                    'description': 'Arrears carry-over',
+                    'category': 'Arrears',
+                    'quantity': 1,
+                    'unit_price': previous_unpaid,
+                    'total': previous_unpaid
+                })
             
             # 1. Monthly rent (or pro-rated)
             if start_date.day == 1:
@@ -115,11 +143,11 @@ class InvoiceGenerationService:
                     'total': pro_rated_amount
                 })
             
-            # 2. Deposit
+            # 2. Security Deposit (ensure category matches analytics queries and statements)
             if lease.deposit_amount > 0:
                 line_items.append({
                     'description': 'Security Deposit',
-                    'category': 'Deposit',
+                    'category': 'Security Deposit',
                     'quantity': 1,
                     'unit_price': lease.deposit_amount,
                     'total': lease.deposit_amount
@@ -169,7 +197,36 @@ class InvoiceGenerationService:
             
             # Calculate totals and save
             invoice.calculate_totals()
+            # Auto-send the initial invoice: mark as sent and record sender/time
+            invoice.status = 'sent'
+            try:
+                from django.utils import timezone as _tz
+                invoice.sent_at = _tz.now()
+            except Exception:
+                pass
+            try:
+                # Record the user who triggered sending if available
+                invoice.sent_by = user
+            except Exception:
+                pass
             invoice.save()
+            try:
+                print(f"[igs.initial] created invoice_id={invoice.id} number={invoice.invoice_number} total={invoice.total_amount} status={invoice.status}")
+            except Exception:
+                pass
+
+            # Create an audit log for the send action (non-fatal if unavailable)
+            try:
+                from .models import InvoiceAuditLog
+                if user is not None:
+                    InvoiceAuditLog.objects.create(
+                        invoice=invoice,
+                        action='sent',
+                        user=user,
+                        details='Initial lease invoice auto-sent on creation'
+                    )
+            except Exception:
+                pass
             
             return invoice
     
@@ -200,11 +257,17 @@ class InvoiceGenerationService:
                 due_date = self._add_months(due_date, 1)
             
             # Create the invoice
+            # Resolve landlord user for invoice
+            try:
+                landlord_user = getattr(lease.property, 'owner', None)
+            except Exception:
+                landlord_user = None
+
             invoice = Invoice.objects.create(
                 lease=lease,
                 property=lease.property,
                 tenant=lease.tenant,
-                landlord=lease.landlord,
+                landlord=landlord_user,
                 created_by=user,
                 title=f"Monthly Invoice - {billing_month.strftime('%B %Y')}",
                 issue_date=None,  # Will be set when sent
@@ -1578,12 +1641,16 @@ class PaymentReconciliationService:
                 + sum((adj.amount for adj in opening_adjustments), Decimal('0.00'))
             )
 
-            # Get invoices for period (ignore null issue dates)
+            # Get invoices for period. Primary filter is issue_date within window.
+            # As a robustness enhancement, also include invoices whose billing_period_start
+            # falls within the window in case issue_date was not set at creation time.
+            from django.db.models import Q
             invoices = Invoice.objects.filter(
-                lease=lease,
-                issue_date__isnull=False,
-                issue_date__gte=start_date,
-                issue_date__lte=end_date
+                lease=lease
+            ).filter(
+                Q(issue_date__isnull=False, issue_date__gte=start_date, issue_date__lte=end_date)
+                |
+                Q(billing_period_start__isnull=False, billing_period_start__gte=start_date, billing_period_start__lte=end_date)
             ).order_by('issue_date')
             
             # Get manual payments for period (source entries)

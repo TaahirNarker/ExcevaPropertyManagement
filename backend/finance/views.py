@@ -1140,6 +1140,23 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
                     {'error': 'Lease not found'}, 
                     status=status.HTTP_404_NOT_FOUND
                 )
+
+            # Safety: ensure initial invoice exists for the lease start month
+            try:
+                from .models import Invoice as _Invoice
+                from .services import InvoiceGenerationService as _IGS
+                start = lease.start_date
+                missing_initial = not _Invoice.objects.filter(
+                    lease=lease,
+                    invoice_type='regular',
+                    billing_period_start__year=start.year,
+                    billing_period_start__month=start.month
+                ).exists()
+                if missing_initial:
+                    inv = _IGS().generate_initial_lease_invoice(lease, user=None)
+                    print(f"[finance.lease_financials] initial_invoice_created lease_id={lease.id} invoice_id={getattr(inv, 'id', None)}")
+            except Exception:
+                pass
             
             # Get all invoices for this lease
             invoices = Invoice.objects.filter(lease=lease).select_related(
@@ -1770,6 +1787,12 @@ class PaymentReconciliationViewSet(viewsets.ViewSet):
                 logger.warning("[tenant-statement] debug=%s", result['debug'])
 
             if result['success']:
+                try:
+                    logger.warning("[tenant-statement] invoices_count=%s closing_balance=%s",
+                                   len(result.get('transactions', [])) - 1,  # minus opening row
+                                   result.get('summary', {}).get('closing_balance'))
+                except Exception:
+                    pass
                 return Response(result, status=200)
             else:
                 return Response(result, status=400)
@@ -1826,6 +1849,24 @@ class PaymentReconciliationViewSet(viewsets.ViewSet):
                 lease_obj = Lease.objects.select_related('tenant', 'property').get(id=lease_id_int)
             except Lease.DoesNotExist:
                 return Response({'success': False, 'error': 'Lease not found'}, status=404)
+
+            # Final safeguard: ensure initial invoice exists for the lease start month.
+            # This avoids empty statements when earlier hooks/signals were missed.
+            try:
+                from .models import Invoice as _Invoice
+                from .services import InvoiceGenerationService as _IGS
+                start = lease_obj.start_date
+                missing_initial = not _Invoice.objects.filter(
+                    lease=lease_obj,
+                    invoice_type='regular',
+                    billing_period_start__year=start.year,
+                    billing_period_start__month=start.month
+                ).exists()
+                if missing_initial:
+                    _IGS().generate_initial_lease_invoice(lease_obj, user=None)
+            except Exception:
+                # Non-fatal: statement generation continues even if this safety step fails
+                pass
 
             service = PaymentReconciliationService()
             result = service.get_tenant_statement(

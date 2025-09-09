@@ -586,6 +586,7 @@ class PropertyTenantAssignmentView(APIView):
             from tenants.models import Tenant
             from leases.models import Lease
             from django.utils.dateparse import parse_date
+            from finance.services import InvoiceGenerationService
             
             # Get the tenant
             try:
@@ -642,6 +643,15 @@ class PropertyTenantAssignmentView(APIView):
             # Update property status to occupied
             property_obj.status = 'occupied'
             property_obj.save()
+            
+            # Generate initial invoice so deposit and rent appear on first statement
+            try:
+                inv = InvoiceGenerationService().generate_initial_lease_invoice(lease, user=user)
+                print(f"[properties.assign] initial_invoice_created lease_id={lease.id} invoice_id={getattr(inv, 'id', None)}")
+            except Exception as e:
+                print(f"[properties.assign] initial_invoice_error lease_id={lease.id} error={str(e)}")
+                # Non-fatal; still return success for the assignment; finance team can review logs
+                pass
             
             # Return success response
             return Response({

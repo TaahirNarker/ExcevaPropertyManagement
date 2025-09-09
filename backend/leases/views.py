@@ -84,6 +84,38 @@ class LeaseListView(generics.ListCreateAPIView):
                 {'error': f'Failed to create lease: {str(e)}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    def perform_create(self, serializer):
+        """On successful lease creation, generate the initial invoice and optionally activate lease.
+
+        Centralized here to ensure the endpoint used by `frontend/src/app/dashboard/leases/add/page.tsx`
+        triggers initial invoice generation immediately after creation. A post_save signal will provide
+        a secondary safety net to prevent misses and duplicates.
+        """
+        lease = serializer.save()
+
+        # Optionally set lease active immediately when start_date is valid/current or past
+        try:
+            from django.utils import timezone as _tz
+            print(f"[leases.perform_create] lease_id={lease.id} start_date={lease.start_date} rent_due_day={getattr(lease, 'rent_due_day', None)} monthly_rent={getattr(lease, 'monthly_rent', None)} deposit={getattr(lease, 'deposit_amount', None)} status={lease.status}")
+            if getattr(lease, 'status', None) in ['pending', 'draft']:
+                if lease.start_date and lease.start_date <= _tz.now().date():
+                    lease.status = 'active'
+                    lease.save(update_fields=['status'])
+                    print(f"[leases.perform_create] lease_id={lease.id} status->active")
+        except Exception:
+            # Non-fatal if activation cannot be determined
+            pass
+
+        # Generate initial invoice (idempotency checked in service/signal path)
+        try:
+            from finance.services import InvoiceGenerationService
+            inv = InvoiceGenerationService().generate_initial_lease_invoice(lease, user=self.request.user)
+            print(f"[leases.perform_create] initial_invoice_created lease_id={lease.id} invoice_id={getattr(inv, 'id', None)} invoice_number={getattr(inv, 'invoice_number', None)}")
+        except Exception as e:
+            print(f"[leases.perform_create] initial_invoice_error lease_id={lease.id} error={str(e)}")
+            # Do not block lease creation on invoice errors; signal will also attempt generation
+            pass
     
     def list(self, request, *args, **kwargs):
         try:

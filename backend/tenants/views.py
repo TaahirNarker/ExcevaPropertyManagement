@@ -54,6 +54,7 @@ class TenantListCreateView(generics.ListCreateAPIView):
                     from properties.models import Property
                     from leases.models import Lease
                     from django.utils.dateparse import parse_date
+                    from finance.services import InvoiceGenerationService
                     
                     # Get the property
                     property_obj = Property.objects.get(id=property_id)
@@ -121,7 +122,16 @@ class TenantListCreateView(generics.ListCreateAPIView):
                     # Update property status to occupied
                     property_obj.status = 'occupied'
                     property_obj.save()
-                    
+
+                    # Generate initial invoice so deposit and rent appear on first statement
+                    try:
+                        inv = InvoiceGenerationService().generate_initial_lease_invoice(lease, user=user)
+                        print(f"[tenants.create] initial_invoice_created lease_id={lease.id} invoice_id={getattr(inv, 'id', None)}")
+                    except Exception as e:
+                        print(f"[tenants.create] initial_invoice_error lease_id={lease.id} error={str(e)}")
+                        # Non-fatal: proceed, finance team can review logs if invoice generation fails
+                        pass
+
                     # Return success response with lease info
                     response_data = serializer.data
                     response_data['lease_created'] = True

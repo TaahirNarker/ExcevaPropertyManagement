@@ -466,3 +466,76 @@ class LeaseStatementEndpointTest(TestCase):
         self.assertIn('statement_period', data)
         self.assertIn('summary', data)
         self.assertIn('transactions', data)
+
+
+class InitialInvoiceOnLeaseCreationTest(TestCase):
+    """Ensure creating a lease generates and auto-sends an initial invoice with rent and deposit."""
+
+    def _create_user(self, email):
+        return CustomUser.objects.create_user(username=email.split('@')[0], email=email, password='pass1234')
+
+    def setUp(self):
+        owner = self._create_user('owner7@example.com')
+        self.property = Property.objects.create(
+            name="Init Prop",
+            street_address="20 Test St",
+            city="Cape Town",
+            province="western_cape",
+            owner=owner,
+        )
+        tenant_user = self._create_user('init@example.com')
+        self.tenant = Tenant.objects.create(
+            user=tenant_user,
+            id_number="8001015009093",
+            date_of_birth=date(1980,1,1),
+            phone="0800000012",
+            email='init@example.com',
+            address="20 Main St",
+            city="Cape Town",
+            province="Western Cape",
+            postal_code="8000",
+            employment_status='employed',
+            emergency_contact_name='EC',
+            emergency_contact_phone='0800000013',
+            emergency_contact_relationship='Friend',
+            status='active'
+        )
+
+    def test_initial_invoice_created_and_statement_shows_balance(self):
+        today = timezone.now().date()
+        first_of_month = today.replace(day=1)
+
+        lease = Lease.objects.create(
+            property=self.property,
+            tenant=self.tenant,
+            start_date=first_of_month,
+            end_date=first_of_month.replace(year=first_of_month.year + 1),
+            monthly_rent=Decimal('1234.56'),
+            deposit_amount=Decimal('2000.00'),
+            rental_frequency='Monthly',
+            rent_due_day=1,
+            status='active'
+        )
+
+        from .models import Invoice
+        invoices = Invoice.objects.filter(lease=lease)
+        self.assertEqual(invoices.count(), 1, 'Exactly one initial invoice should be created')
+        invoice = invoices.first()
+        self.assertEqual(invoice.status, 'sent', 'Initial invoice should be auto-sent')
+        # Line items validation
+        descriptions = list(invoice.line_items.values_list('description', flat=True))
+        categories = list(invoice.line_items.values_list('category', flat=True))
+        self.assertIn('Monthly Rent', descriptions)
+        self.assertIn('Security Deposit', descriptions)
+        self.assertIn('Security Deposit', categories)
+
+        # Statement should include the invoice in current month and closing balance > 0
+        service = PaymentReconciliationService()
+        statement = service.get_tenant_statement(
+            tenant_id=self.tenant.id,
+            start_date=first_of_month,
+            end_date=today,
+            lease_id=lease.id
+        )
+        self.assertTrue(statement['success'])
+        self.assertGreater(statement['summary']['closing_balance'], 0.0)
