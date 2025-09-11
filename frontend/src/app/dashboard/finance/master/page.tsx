@@ -52,6 +52,9 @@ import {
   ArrowPathIcon
 } from '@heroicons/react/24/outline';
 
+// Comprehensive income exports
+import { generateComprehensiveIncomePDF, generateComprehensiveIncomeXLSX } from '@/utils/exportUtils';
+
 // Type definitions
 interface FinancialSummary {
   total_rental_income: number;
@@ -128,6 +131,40 @@ interface BankTransaction {
   reconciled?: boolean;
 }
 
+// =============================
+// Incomes Tab Data Structures
+// =============================
+interface IncomeSummary {
+  total_monthly_income: number;
+  income_growth: number;
+  collection_rate: number;
+  average_payment_time_days: number;
+}
+
+interface IncomeBySourceItem {
+  source: 'rent' | 'recurring' | 'late_fee' | 'management_fee' | 'procurement_fee' | 'deposit' | 'bitcoin' | 'manual' | 'other' | string;
+  amount: number;
+  percentage: number;
+}
+
+interface IncomeByPropertyItem {
+  property_id?: string | number;
+  property_name: string;
+  amount: number;
+}
+
+interface IncomeByPaymentMethodItem {
+  method: string;
+  total: number;
+  success_rate: number;
+  count: number;
+}
+
+interface IncomeTrendPoint {
+  month: string;
+  total: number;
+}
+
 export default function MasterFinancePage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
@@ -148,6 +185,9 @@ export default function MasterFinancePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  const [propertyFilter, setPropertyFilter] = useState<string>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('all');
   
   // Payment modal state
   const [showCSVImportModal, setShowCSVImportModal] = useState(false);
@@ -158,12 +198,80 @@ export default function MasterFinancePage() {
   const [leases, setLeases] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [selectedInvoiceForAdjustment, setSelectedInvoiceForAdjustment] = useState<any>(null);
+
+  // Income state
+  const [incomeSummary, setIncomeSummary] = useState<IncomeSummary | null>(null);
+  const [incomeBySource, setIncomeBySource] = useState<IncomeBySourceItem[]>([]);
+  const [incomeByProperty, setIncomeByProperty] = useState<IncomeByPropertyItem[]>([]);
+  const [incomeByMethod, setIncomeByMethod] = useState<IncomeByPaymentMethodItem[]>([]);
+  const [incomeTrend, setIncomeTrend] = useState<IncomeTrendPoint[]>([]);
   
   // Dropdown state management
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
   const toggleDropdown = (dropdownId: string) => {
     setActiveDropdown(activeDropdown === dropdownId ? null : dropdownId);
+  };
+
+  // Derived computations for incomes
+  const computeIncomeDerivedData = (summary: FinancialSummary | null) => {
+    try {
+      if (!summary) return;
+      const computed: IncomeSummary = {
+        total_monthly_income: Number(summary.monthly_revenue || 0),
+        income_growth: 0,
+        collection_rate: Number(summary.collection_rate || 0),
+        average_payment_time_days: 0,
+      };
+      setIncomeSummary(computed);
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const computeIncomeBreakdowns = (payments: Payment[], summary: FinancialSummary | null) => {
+    try {
+      const totalsBySource: Record<string, number> = {};
+      let total = 0;
+      (payments || []).forEach(p => {
+        const key = (p.type || 'other').toString();
+        totalsBySource[key] = (totalsBySource[key] || 0) + (Number(p.amount) || 0);
+        total += Number(p.amount) || 0;
+      });
+      const sourceItems = Object.entries(totalsBySource).map(([k, v]) => ({ source: k, amount: v, percentage: total > 0 ? (v / total) * 100 : 0 })) as IncomeBySourceItem[];
+      setIncomeBySource(sourceItems.sort((a, b) => b.amount - a.amount));
+
+      const totalsByProperty: Record<string, number> = {};
+      (payments || []).forEach(p => {
+        const name = p.property_name || 'Unassigned';
+        totalsByProperty[name] = (totalsByProperty[name] || 0) + (Number(p.amount) || 0);
+      });
+      const propertyItems = Object.entries(totalsByProperty).map(([name, amt]) => ({ property_name: name, amount: amt })) as IncomeByPropertyItem[];
+      setIncomeByProperty(propertyItems.sort((a, b) => b.amount - a.amount).slice(0, 12));
+
+      const methodTotals: Record<string, { total: number; count: number; success: number }> = {};
+      (payments || []).forEach(p => {
+        const method = p.payment_method || 'other';
+        if (!methodTotals[method]) methodTotals[method] = { total: 0, count: 0, success: 0 };
+        methodTotals[method].total += Number(p.amount) || 0;
+        methodTotals[method].count += 1;
+        if (p.status === 'completed') methodTotals[method].success += 1;
+      });
+      const methodItems = Object.entries(methodTotals).map(([m, v]) => ({ method: m, total: v.total, count: v.count, success_rate: v.count > 0 ? (v.success / v.count) * 100 : 0 })) as IncomeByPaymentMethodItem[];
+      setIncomeByMethod(methodItems.sort((a, b) => b.total - a.total));
+
+      const trendTotals: Record<string, number> = {};
+      (payments || []).forEach(p => {
+        const d = new Date(p.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        trendTotals[key] = (trendTotals[key] || 0) + (Number(p.amount) || 0);
+      });
+      const trendPoints = Object.entries(trendTotals).map(([month, value]) => ({ month, total: value })) as IncomeTrendPoint[];
+      trendPoints.sort((a, b) => a.month.localeCompare(b.month));
+      setIncomeTrend(trendPoints.slice(-12));
+    } catch (e) {
+      // ignore
+    }
   };
 
   const closeDropdown = () => {
@@ -178,6 +286,7 @@ export default function MasterFinancePage() {
       // Fetch financial summary
       const summary = await financeApi.getFinancialSummary();
       setFinancialSummary(summary);
+      computeIncomeDerivedData(summary);
       
       // Fetch rental outstanding
       const outstanding = await financeApi.getRentalOutstanding();
@@ -186,6 +295,7 @@ export default function MasterFinancePage() {
       // Fetch recent payments
       const payments = await financeApi.getPayments();
       setRecentPayments(Array.isArray(payments) ? payments : []);
+      computeIncomeBreakdowns(Array.isArray(payments) ? payments : [], summary);
       
       // Fetch landlord payments
       const landlordPayments = await financeApi.getLandlordPayments();
@@ -386,11 +496,37 @@ export default function MasterFinancePage() {
   };
 
   const handleExportIncomePDF = () => {
-    generateIncomeReportPDF(rentalOutstanding);
+    generateComprehensiveIncomePDF(
+      {
+        total_monthly_income: incomeSummary?.total_monthly_income || 0,
+        income_growth: incomeSummary?.income_growth || 0,
+        collection_rate: incomeSummary?.collection_rate || 0,
+        average_payment_time_days: incomeSummary?.average_payment_time_days || 0,
+      },
+      incomeBySource.map(s => ({ source: s.source, amount: s.amount, percentage: s.percentage })),
+      incomeByProperty.map(p => ({ property_name: p.property_name, amount: p.amount })),
+      incomeByMethod.map(m => ({ method: m.method, total: m.total, success_rate: m.success_rate, count: m.count })),
+      incomeTrend.map(t => ({ month: t.month, total: t.total })),
+      recentPayments,
+      rentalOutstanding
+    );
   };
 
   const handleExportIncomeXLSX = () => {
-    generateIncomeReportXLSX(rentalOutstanding);
+    generateComprehensiveIncomeXLSX(
+      {
+        total_monthly_income: incomeSummary?.total_monthly_income || 0,
+        income_growth: incomeSummary?.income_growth || 0,
+        collection_rate: incomeSummary?.collection_rate || 0,
+        average_payment_time_days: incomeSummary?.average_payment_time_days || 0,
+      },
+      incomeBySource.map(s => ({ source: s.source, amount: s.amount, percentage: s.percentage })),
+      incomeByProperty.map(p => ({ property_name: p.property_name, amount: p.amount })),
+      incomeByMethod.map(m => ({ method: m.method, total: m.total, success_rate: m.success_rate, count: m.count })),
+      incomeTrend.map(t => ({ month: t.month, total: t.total })),
+      recentPayments,
+      rentalOutstanding
+    );
   };
 
   const handleExportExpensesPDF = () => {
@@ -784,16 +920,211 @@ export default function MasterFinancePage() {
           </div>
         )}
 
-        {/* Other tabs would go here - simplified for now */}
-        {activeTab !== 'overview' && (
+        {/* Incomes Tab */}
+        {activeTab === 'incomes' && (
+          <div className="space-y-6">
+            {/* Filters and Export */}
+            <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-4">
+              <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 flex-1">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Date Start</label>
+                    <input type="date" value={dateRange.start} onChange={(e) => setDateRange(prev => ({...prev, start: e.target.value}))} className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Date End</label>
+                    <input type="date" value={dateRange.end} onChange={(e) => setDateRange(prev => ({...prev, end: e.target.value}))} className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Property</label>
+                    <select value={propertyFilter} onChange={(e) => setPropertyFilter(e.target.value)} className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm">
+                      <option value="all">All</option>
+                      {incomeByProperty.map((p) => (
+                        <option key={p.property_name} value={p.property_name}>{p.property_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Source</label>
+                    <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="w-full bg-muted/50 border border-border rounded-md px-3 py-2 text-sm">
+                      <option value="all">All</option>
+                      {incomeBySource.map((s) => (
+                        <option key={s.source} value={s.source}>{s.source}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={handleExportIncomePDF} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">Export PDF</button>
+                  <button onClick={handleExportIncomeXLSX} className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-sm">Export Excel</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Overview Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                <div className="flex items-center">
+                  <CurrencyDollarIcon className="h-8 w-8 text-green-400" />
+                  <div className="ml-4">
+                    <p className="text-sm text-muted-foreground">Total Monthly Income</p>
+                    <p className="text-2xl font-bold">{formatCurrency(incomeSummary?.total_monthly_income || 0)}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                <div className="flex items-center">
+                  <ArrowTrendingUpIcon className="h-8 w-8 text-blue-400" />
+                  <div className="ml-4">
+                    <p className="text-sm text-muted-foreground">Income Growth</p>
+                    <p className="text-2xl font-bold">{(incomeSummary?.income_growth || 0).toFixed(1)}%</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                <div className="flex items-center">
+                  <ChartBarIcon className="h-8 w-8 text-indigo-400" />
+                  <div className="ml-4">
+                    <p className="text-sm text-muted-foreground">Collection Rate</p>
+                    <p className="text-2xl font-bold">{(incomeSummary?.collection_rate || 0).toFixed(1)}%</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                <div className="flex items-center">
+                  <ClockIcon className="h-8 w-8 text-yellow-400" />
+                  <div className="ml-4">
+                    <p className="text-sm text-muted-foreground">Avg Payment Time</p>
+                    <p className="text-2xl font-bold">{(incomeSummary?.average_payment_time_days || 0).toFixed(1)} days</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Income Trend list fallback */}
+            <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+              <h3 className="text-lg font-medium text-foreground mb-4">Income Trend (Last 12 months)</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {incomeTrend.map(t => (
+                  <div key={t.month} className="p-3 rounded-md bg-muted/50">
+                    <p className="text-xs text-muted-foreground">{t.month}</p>
+                    <p className="text-sm font-medium">{formatCurrency(t.total)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Analysis */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                <h3 className="text-lg font-medium text-foreground mb-4">Income by Source</h3>
+                <div className="space-y-3">
+                  {incomeBySource.map((s) => (
+                    <div key={s.source} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-blue-400" />
+                        <span className="text-sm capitalize">{s.source.toString().replace('_', ' ')}</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium">{formatCurrency(s.amount)}</p>
+                        <p className="text-xs text-muted-foreground">{s.percentage.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                <h3 className="text-lg font-medium text-foreground mb-4">Top Properties</h3>
+                <div className="space-y-3">
+                  {incomeByProperty.map((p) => (
+                    <div key={p.property_name} className="flex items-center justify-between">
+                      <span className="text-sm">{p.property_name}</span>
+                      <span className="text-sm font-medium">{formatCurrency(p.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Payment Methods and Recent */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                <h3 className="text-lg font-medium text-foreground mb-4">Payment Methods</h3>
+                <div className="space-y-3">
+                  {incomeByMethod.map((m) => (
+                    <div key={m.method} className="flex items-center justify-between">
+                      <span className="text-sm capitalize">{m.method.replace('_', ' ')}</span>
+                      <div className="text-right">
+                        <p className="text-sm font-medium">{formatCurrency(m.total)}</p>
+                        <p className="text-xs text-muted-foreground">{m.success_rate.toFixed(0)}% success • {m.count} tx</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                <h3 className="text-lg font-medium text-foreground mb-4">Recent Income</h3>
+                <div className="space-y-3">
+                  {recentPayments.filter(p => (propertyFilter==='all' || p.property_name===propertyFilter) && (sourceFilter==='all' || p.type===sourceFilter)).slice(0, 10).map((p) => (
+                    <div key={p.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium">{p.tenant_name || p.property_name}</p>
+                        <p className="text-xs text-muted-foreground">{p.property_name} • {p.type}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium">{formatCurrency(p.amount)}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(p.date)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Outstanding */}
+            <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-foreground">Outstanding Income</h3>
+                <span className="text-sm text-muted-foreground">{rentalOutstanding.length} records</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted-foreground">
+                      <th className="py-2 pr-4">Tenant</th>
+                      <th className="py-2 pr-4">Property</th>
+                      <th className="py-2 pr-4">Unit</th>
+                      <th className="py-2 pr-4">Amount Due</th>
+                      <th className="py-2 pr-4">Days Overdue</th>
+                      <th className="py-2 pr-4">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rentalOutstanding.map((r) => (
+                      <tr key={r.id} className="border-t border-border/60">
+                        <td className="py-2 pr-4">{r.tenant_name}</td>
+                        <td className="py-2 pr-4">{r.property_name}</td>
+                        <td className="py-2 pr-4">{r.unit_number}</td>
+                        <td className="py-2 pr-4">{formatCurrency(r.amount_due)}</td>
+                        <td className="py-2 pr-4 text-red-400">{r.days_overdue}</td>
+                        <td className="py-2 pr-4 capitalize">{r.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Placeholder for other tabs */}
+        {activeTab !== 'overview' && activeTab !== 'incomes' && (
           <div className="space-y-6">
             <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
-              <h3 className="text-lg font-medium text-foreground mb-4">
-                {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Tab
-              </h3>
-              <p className="text-muted-foreground">
-                This tab content will be implemented based on your requirements.
-              </p>
+              <h3 className="text-lg font-medium text-foreground mb-4">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Tab</h3>
+              <p className="text-muted-foreground">This tab content will be implemented based on your requirements.</p>
             </div>
           </div>
         )}

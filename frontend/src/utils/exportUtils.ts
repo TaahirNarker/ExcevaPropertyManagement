@@ -712,3 +712,235 @@ export const generateSupplierReportXLSX = (supplierPayments: SupplierPayment[]) 
     handleExportError(error, 'Supplier Report Excel');
   }
 }; 
+
+// =============================
+// Comprehensive Income Exports
+// =============================
+
+// Local types for comprehensive income export
+type IncomeBySource = { source: string; amount: number; percentage: number }[];
+type IncomeByProperty = { property_name: string; amount: number }[];
+type IncomeByPaymentMethod = { method: string; total: number; success_rate: number; count: number }[];
+type IncomeTrend = { month: string; total: number }[];
+
+interface IncomeSummaryExport {
+  total_monthly_income: number;
+  income_growth: number; // percent
+  collection_rate: number; // percent
+  average_payment_time_days: number; // days
+}
+
+interface OutstandingIncomeExport {
+  id: string;
+  tenant_name: string;
+  property_name: string;
+  unit_number: string;
+  amount_due: number;
+  days_overdue: number;
+  status: string;
+}
+
+export const generateComprehensiveIncomePDF = (
+  summary: IncomeSummaryExport,
+  bySource: IncomeBySource,
+  byProperty: IncomeByProperty,
+  byMethod: IncomeByPaymentMethod,
+  trend: IncomeTrend,
+  recentPayments: Payment[],
+  outstanding: OutstandingIncomeExport[]
+) => {
+  try {
+    const doc = new jsPDF();
+
+    // Header
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Comprehensive Income Report', 20, 30);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 20, 45);
+
+    // Summary
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text('Income Summary', 20, 65);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    let y = 80;
+    const lines = [
+      ['Total Monthly Income', formatCurrency(summary.total_monthly_income)],
+      ['Income Growth', `${summary.income_growth.toFixed(1)}%`],
+      ['Collection Rate', `${summary.collection_rate.toFixed(1)}%`],
+      ['Average Payment Time', `${summary.average_payment_time_days.toFixed(1)} days`],
+    ];
+    lines.forEach(([l, v]) => { doc.text(l as string, 25, y); doc.text(v as string, 145, y); y += 10; });
+
+    // Income by Source
+    y += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Income by Source', 20, y);
+    y += 10;
+    doc.setFont('helvetica', 'normal');
+    bySource.slice(0, 8).forEach((row) => {
+      if (y > 260) { doc.addPage(); y = 30; }
+      doc.text(`${row.source}`, 25, y);
+      doc.text(formatCurrency(row.amount), 120, y);
+      doc.text(`${row.percentage.toFixed(1)}%`, 170, y);
+      y += 8;
+    });
+
+    // New page for property & method
+    if (y > 200) { doc.addPage(); y = 30; } else { y += 10; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Top Properties by Income', 20, y);
+    y += 10; doc.setFont('helvetica', 'normal');
+    byProperty.slice(0, 10).forEach((p) => {
+      if (y > 260) { doc.addPage(); y = 30; }
+      doc.text(p.property_name.substring(0, 28), 25, y);
+      doc.text(formatCurrency(p.amount), 150, y);
+      y += 8;
+    });
+
+    if (y > 200) { doc.addPage(); y = 30; } else { y += 10; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Payment Methods', 20, y);
+    y += 10; doc.setFont('helvetica', 'normal');
+    byMethod.forEach((m) => {
+      if (y > 260) { doc.addPage(); y = 30; }
+      doc.text(`${m.method}`, 25, y);
+      doc.text(`Total: ${formatCurrency(m.total)}`, 90, y);
+      doc.text(`Success: ${m.success_rate.toFixed(0)}% (${m.count})`, 150, y);
+      y += 8;
+    });
+
+    // Trend
+    if (y > 200) { doc.addPage(); y = 30; } else { y += 10; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Monthly Trend (last 12 months)', 20, y);
+    y += 10; doc.setFont('helvetica', 'normal');
+    trend.forEach((t) => {
+      if (y > 260) { doc.addPage(); y = 30; }
+      doc.text(`${t.month}`, 25, y);
+      doc.text(formatCurrency(t.total), 120, y);
+      y += 8;
+    });
+
+    // Recent Payments
+    if (y > 200) { doc.addPage(); y = 30; } else { y += 10; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Recent Income', 20, y);
+    y += 10; doc.setFont('helvetica', 'normal');
+    recentPayments.slice(0, 12).forEach((p) => {
+      if (y > 260) { doc.addPage(); y = 30; }
+      doc.text(`${formatDate(p.date)}`, 25, y);
+      doc.text(`${p.property_name.substring(0, 20)}`, 70, y);
+      doc.text(`${p.type}`, 120, y);
+      doc.text(formatCurrency(p.amount), 150, y);
+      y += 8;
+    });
+
+    // Outstanding table
+    if (y > 200) { doc.addPage(); y = 30; } else { y += 10; }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('Outstanding Income', 20, y);
+    y += 10; doc.setFont('helvetica', 'normal');
+    const totalOutstanding = outstanding.reduce((s, r) => s + r.amount_due, 0);
+    outstanding.slice(0, 12).forEach((r) => {
+      if (y > 260) { doc.addPage(); y = 30; }
+      doc.text(`${r.tenant_name.substring(0, 16)}`, 25, y);
+      doc.text(`${r.property_name.substring(0, 16)}`, 80, y);
+      doc.text(formatCurrency(r.amount_due), 140, y);
+      doc.text(`${r.days_overdue}d`, 180, y);
+      y += 8;
+    });
+    if (y < 270) { y += 6; doc.setFont('helvetica', 'bold'); doc.text(`Total Outstanding: ${formatCurrency(totalOutstanding)}`, 25, y); }
+
+    doc.save('comprehensive-income-report.pdf');
+  } catch (error) {
+    handleExportError(error, 'Comprehensive Income PDF');
+  }
+};
+
+export const generateComprehensiveIncomeXLSX = (
+  summary: IncomeSummaryExport,
+  bySource: IncomeBySource,
+  byProperty: IncomeByProperty,
+  byMethod: IncomeByPaymentMethod,
+  trend: IncomeTrend,
+  recentPayments: Payment[],
+  outstanding: OutstandingIncomeExport[]
+) => {
+  try {
+    const wb = XLSX.utils.book_new();
+
+    // Summary sheet
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      ['Comprehensive Income Summary', ''],
+      ['Generated', new Date().toLocaleDateString()],
+      ['Total Monthly Income', summary.total_monthly_income],
+      ['Income Growth %', summary.income_growth],
+      ['Collection Rate %', summary.collection_rate],
+      ['Average Payment Time (days)', summary.average_payment_time_days],
+    ]);
+    XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+    // By source
+    const sourceSheet = XLSX.utils.aoa_to_sheet([
+      ['Income by Source', '', ''],
+      ['Source', 'Amount', 'Percentage'],
+      ...bySource.map(s => [s.source, s.amount, s.percentage]),
+    ]);
+    XLSX.utils.book_append_sheet(wb, sourceSheet, 'By Source');
+
+    // By property
+    const propSheet = XLSX.utils.aoa_to_sheet([
+      ['Income by Property', ''],
+      ['Property', 'Amount'],
+      ...byProperty.map(p => [p.property_name, p.amount]),
+    ]);
+    XLSX.utils.book_append_sheet(wb, propSheet, 'By Property');
+
+    // By method
+    const methodSheet = XLSX.utils.aoa_to_sheet([
+      ['Payment Methods', '', '', ''],
+      ['Method', 'Total', 'Success Rate %', 'Count'],
+      ...byMethod.map(m => [m.method, m.total, m.success_rate, m.count]),
+    ]);
+    XLSX.utils.book_append_sheet(wb, methodSheet, 'By Method');
+
+    // Trend
+    const trendSheet = XLSX.utils.aoa_to_sheet([
+      ['Monthly Trend', ''],
+      ['Month', 'Total'],
+      ...trend.map(t => [t.month, t.total]),
+    ]);
+    XLSX.utils.book_append_sheet(wb, trendSheet, 'Trend');
+
+    // Recent
+    const recentSheet = XLSX.utils.aoa_to_sheet([
+      ['Recent Income', '', '', '', ''],
+      ['Date', 'Property', 'Type', 'Amount', 'Status'],
+      ...recentPayments.map(p => [p.date, p.property_name, p.type, p.amount, p.status]),
+    ]);
+    XLSX.utils.book_append_sheet(wb, recentSheet, 'Recent');
+
+    // Outstanding
+    const outSheet = XLSX.utils.aoa_to_sheet([
+      ['Outstanding Income', '', '', '', ''],
+      ['Tenant', 'Property', 'Unit', 'Amount Due', 'Days Overdue'],
+      ...outstanding.map(o => [o.tenant_name, o.property_name, o.unit_number, o.amount_due, o.days_overdue]),
+      ['', '', '', outstanding.reduce((s, r) => s + r.amount_due, 0), 'Total'],
+    ]);
+    XLSX.utils.book_append_sheet(wb, outSheet, 'Outstanding');
+
+    XLSX.writeFile(wb, 'comprehensive-income-report.xlsx');
+  } catch (error) {
+    handleExportError(error, 'Comprehensive Income Excel');
+  }
+};
