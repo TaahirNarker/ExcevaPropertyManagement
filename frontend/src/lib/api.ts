@@ -396,6 +396,81 @@ export interface BankTransaction {
   reference: string;
 }
 
+// Expense Management Types
+export interface ExpenseCategory {
+  id: number;
+  name: string;
+  description?: string;
+  parent_category?: number | null;
+  is_active: boolean;
+  tax_deductible: boolean;
+  color_code: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Supplier {
+  id: number;
+  name: string;
+  contact_person?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  payment_terms: string;
+  is_preferred: boolean;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Expense {
+  id: number;
+  title: string;
+  description?: string;
+  amount: number;
+  tax_amount: number;
+  total_amount: number;
+  expense_date: string;
+  status: 'draft' | 'pending_approval' | 'approved' | 'paid' | 'rejected';
+  property: string | number;
+  property_name?: string;
+  category: number;
+  category_name?: string;
+  supplier?: number | null;
+  supplier_name?: string;
+  created_by?: number | string;
+  created_by_name?: string;
+  is_recurring: boolean;
+  recurring_frequency?: string;
+  receipt_image?: string;
+  invoice_number?: string;
+  reference_number?: string;
+  approved_by?: number | string | null;
+  approved_by_name?: string;
+  approved_at?: string | null;
+  approval_notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Budget {
+  id: number;
+  name: string;
+  period: 'monthly' | 'quarterly' | 'annually';
+  start_date: string;
+  end_date: string;
+  total_budget: number;
+  spent_amount: number;
+  remaining_amount: number;
+  is_active: boolean;
+  property?: number | null;
+  property_name?: string;
+  category?: number | null;
+  category_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // Tenant API
 export const tenantApi = {
   searchTenants: async (query: string): Promise<Tenant[]> => {
@@ -1026,6 +1101,85 @@ export const financeApi = {
       params: { lease_id: leaseId }
     });
     return response.data;
+  },
+};
+
+// Expense Management API
+export const expensesApi = {
+  // Categories
+  listCategories: async (): Promise<ExpenseCategory[]> => {
+    const response = await api.get('/finance/expense-categories/');
+    return response.data.results || response.data;
+  },
+  createCategory: async (data: Partial<ExpenseCategory>): Promise<ExpenseCategory> => {
+    const response = await api.post('/finance/expense-categories/', data);
+    return response.data;
+  },
+  updateCategory: async (id: number, data: Partial<ExpenseCategory>): Promise<ExpenseCategory> => {
+    const response = await api.patch(`/finance/expense-categories/${id}/`, data);
+    return response.data;
+  },
+  deleteCategory: async (id: number): Promise<void> => {
+    await api.delete(`/finance/expense-categories/${id}/`);
+  },
+
+  // Suppliers
+  listSuppliers: async (): Promise<Supplier[]> => {
+    const response = await api.get('/finance/suppliers/');
+    return response.data.results || response.data;
+  },
+  createSupplier: async (data: Partial<Supplier>): Promise<Supplier> => {
+    const response = await api.post('/finance/suppliers/', data);
+    return response.data;
+  },
+  updateSupplier: async (id: number, data: Partial<Supplier>): Promise<Supplier> => {
+    const response = await api.patch(`/finance/suppliers/${id}/`, data);
+    return response.data;
+  },
+  deleteSupplier: async (id: number): Promise<void> => {
+    await api.delete(`/finance/suppliers/${id}/`);
+  },
+
+  // Expenses
+  listExpenses: async (params?: any): Promise<{ results: Expense[]; count: number }> => {
+    const response = await api.get('/finance/expenses/', { params });
+    return response.data;
+  },
+  createExpense: async (data: Partial<Expense>): Promise<Expense> => {
+    const response = await api.post('/finance/expenses/', data);
+    return response.data;
+  },
+  updateExpense: async (id: number, data: Partial<Expense>): Promise<Expense> => {
+    const response = await api.patch(`/finance/expenses/${id}/`, data);
+    return response.data;
+  },
+  deleteExpense: async (id: number): Promise<void> => {
+    await api.delete(`/finance/expenses/${id}/`);
+  },
+  getExpenseAnalytics: async (): Promise<{
+    monthly_trend: Array<{ month: string; total: number }>;
+    by_category: Array<{ category: string; total: number }>;
+    top_properties: Array<{ property_name: string; total: number }>;
+  }> => {
+    const response = await api.get('/finance/expenses/analytics/');
+    return response.data;
+  },
+
+  // Budgets
+  listBudgets: async (params?: any): Promise<{ results: Budget[]; count: number }> => {
+    const response = await api.get('/finance/budgets/', { params });
+    return response.data;
+  },
+  createBudget: async (data: Partial<Budget>): Promise<Budget> => {
+    const response = await api.post('/finance/budgets/', data);
+    return response.data;
+  },
+  updateBudget: async (id: number, data: Partial<Budget>): Promise<Budget> => {
+    const response = await api.patch(`/finance/budgets/${id}/`, data);
+    return response.data;
+  },
+  deleteBudget: async (id: number): Promise<void> => {
+    await api.delete(`/finance/budgets/${id}/`);
   },
 };
 

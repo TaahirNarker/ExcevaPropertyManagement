@@ -2,7 +2,7 @@
 Management command to set up initial finance system settings and configurations.
 """
 from django.core.management.base import BaseCommand
-from finance.models import SystemSettings
+from finance.models import SystemSettings, ExpenseCategory
 
 
 class Command(BaseCommand):
@@ -69,3 +69,26 @@ class Command(BaseCommand):
                 f'Total settings: {SystemSettings.objects.count()}'
             )
         )
+
+        # Seed default expense categories if not present
+        self.stdout.write(self.style.WARNING('\nChecking default expense categories...'))
+        default_categories = [
+            ('Maintenance & Repairs', ''),
+            ('Utilities', ''),
+            ('Insurance', ''),
+            ('Property Management', ''),
+            ('Supplies & Materials', ''),
+            ('Professional Services', ''),
+            ('Banking & Finance', ''),
+            ('Other Operating Expenses', ''),
+        ]
+
+        cat_created = 0
+        for name, desc in default_categories:
+            obj, created = ExpenseCategory.objects.get_or_create(
+                name=name,
+                defaults={'description': desc, 'is_active': True}
+            )
+            if created:
+                cat_created += 1
+        self.stdout.write(self.style.SUCCESS(f'Expense categories created: {cat_created}'))

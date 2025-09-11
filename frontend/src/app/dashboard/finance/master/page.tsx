@@ -6,6 +6,10 @@ import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { financeApi, leaseApi, invoiceApi } from '@/lib/api';
 import CSVImportModal from '@/components/CSVImportModal';
+import ExpenseForm from '@/components/ExpenseForm';
+import ExpenseList from '@/components/ExpenseList';
+import ExpenseAnalytics from '@/components/ExpenseAnalytics';
+import { expensesApi, Expense } from '@/lib/api';
 import ManualPaymentModal from '@/components/ManualPaymentModal';
 import PaymentAllocationModal from '@/components/PaymentAllocationModal';
 import AdjustmentModal from '@/components/AdjustmentModal';
@@ -198,6 +202,9 @@ export default function MasterFinancePage() {
   const [leases, setLeases] = useState<any[]>([]);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [selectedInvoiceForAdjustment, setSelectedInvoiceForAdjustment] = useState<any>(null);
+  // Expenses state
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   // Income state
   const [incomeSummary, setIncomeSummary] = useState<IncomeSummary | null>(null);
@@ -1122,10 +1129,41 @@ export default function MasterFinancePage() {
         {/* Placeholder for other tabs */}
         {activeTab !== 'overview' && activeTab !== 'incomes' && (
           <div className="space-y-6">
-            <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
-              <h3 className="text-lg font-medium text-foreground mb-4">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Tab</h3>
-              <p className="text-muted-foreground">This tab content will be implemented based on your requirements.</p>
-            </div>
+            {activeTab === 'expenses' ? (
+              <>
+                {/* Actions */}
+                <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-medium text-foreground">Expenses</h3>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setEditingExpense(null); setShowExpenseModal(true); }} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm">Add Expense</button>
+                      <div className="relative page-dropdown-container">
+                        <button onClick={() => toggleDropdown('expenses-export')} className="px-3 py-2 bg-muted text-foreground border border-border rounded-md text-sm">Export</button>
+                        {activeDropdown === 'expenses-export' && (
+                          <div className="absolute right-0 mt-1 w-40 bg-card border border-border rounded-lg shadow-lg z-50">
+                            <button onClick={() => { handleExportExpensesPDF(); closeDropdown(); }} className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-t-lg">📄 Export PDF</button>
+                            <button onClick={() => { handleExportExpensesXLSX(); closeDropdown(); }} className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted rounded-b-lg">📊 Export Excel</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Analytics */}
+                <ExpenseAnalytics />
+
+                {/* List */}
+                <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                  <ExpenseList onEdit={(exp) => { setEditingExpense(exp); setShowExpenseModal(true); }} />
+                </div>
+              </>
+            ) : (
+              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
+                <h3 className="text-lg font-medium text-foreground mb-4">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Tab</h3>
+                <p className="text-muted-foreground">This tab content will be implemented based on your requirements.</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -1179,6 +1217,25 @@ export default function MasterFinancePage() {
           onInvoiceSelect={handleInvoiceSelectedForAdjustment}
           invoices={invoices}
         />
+
+        {/* Expense Modal */}
+        {showExpenseModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-card/90 backdrop-blur-lg border border-border rounded-lg p-6 w-full max-w-3xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-foreground">{editingExpense ? 'Edit Expense' : 'Add Expense'}</h3>
+                <button onClick={() => setShowExpenseModal(false)} className="text-muted-foreground hover:text-foreground">
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <ExpenseForm
+                expense={editingExpense}
+                onClose={() => setShowExpenseModal(false)}
+                onSaved={() => { setShowExpenseModal(false); /* refresh list by toggling tab */ setActiveTab('incomes'); setActiveTab('expenses'); }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

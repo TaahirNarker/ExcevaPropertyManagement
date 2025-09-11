@@ -4,7 +4,9 @@ from .views import (
     InvoiceViewSet, InvoiceTemplateViewSet, InvoicePaymentViewSet, 
     InvoiceLineItemViewSet, InvoiceAuditLogViewSet, FinanceAPIViewSet,
     PaymentAllocationViewSet, RecurringChargeViewSet, RentEscalationViewSet, SystemSettingsViewSet,
-    PaymentReconciliationViewSet, ManualPaymentViewSet
+    PaymentReconciliationViewSet, ManualPaymentViewSet,
+    # Expense management viewsets
+    ExpenseCategoryViewSet, SupplierViewSet, ExpenseViewSet, BudgetViewSet
 )
 
 # Create router and register viewsets
@@ -20,6 +22,10 @@ router.register(r'recurring-charges', RecurringChargeViewSet, basename='recurrin
 router.register(r'rent-escalation', RentEscalationViewSet, basename='rent-escalation')
 router.register(r'system-settings', SystemSettingsViewSet, basename='system-settings')
 router.register(r'payment-reconciliation', PaymentReconciliationViewSet, basename='payment-reconciliation')
+router.register(r'expense-categories', ExpenseCategoryViewSet, basename='expense-category')
+router.register(r'suppliers', SupplierViewSet, basename='supplier')
+router.register(r'expenses', ExpenseViewSet, basename='expense')
+router.register(r'budgets', BudgetViewSet, basename='budget')
 
 urlpatterns = [
     path('', include(router.urls)),

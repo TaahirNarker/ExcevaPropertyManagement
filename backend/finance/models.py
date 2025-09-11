@@ -937,3 +937,151 @@ class UnderpaymentAlert(models.Model):
         """Dismiss the alert"""
         self.status = 'dismissed'
         self.save()
+
+
+# =============================
+# Expense Management Models
+# =============================
+
+class ExpenseCategory(models.Model):
+    """Hierarchical expense categories for classification and reporting.
+
+    Using a simple self-referential ForeignKey keeps implementation light while
+    allowing nested categories (e.g. Utilities → Electricity).
+    """
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    parent_category = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='subcategories')
+    is_active = models.BooleanField(default=True)
+    tax_deductible = models.BooleanField(default=True)
+    color_code = models.CharField(max_length=7, default='#3B82F6', help_text="Hex color used in UI charts")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Expense Category'
+        verbose_name_plural = 'Expense Categories'
+
+    def __str__(self):
+        return self.name
+
+
+class Supplier(models.Model):
+    """Suppliers/Vendors that receive payments for expenses."""
+    name = models.CharField(max_length=200)
+    contact_person = models.CharField(max_length=100, blank=True)
+    email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    address = models.TextField(blank=True)
+    payment_terms = models.CharField(max_length=50, default='30 days')
+    is_preferred = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name = 'Supplier'
+        verbose_name_plural = 'Suppliers'
+
+    def __str__(self):
+        return self.name
+
+
+class Expense(models.Model):
+    """Primary model for tracking business expenses at property level."""
+
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('pending_approval', 'Pending Approval'),
+        ('approved', 'Approved'),
+        ('paid', 'Paid'),
+        ('rejected', 'Rejected'),
+    ]
+
+    # Basic info
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    expense_date = models.DateField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    # Relationships
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='expenses')
+    category = models.ForeignKey(ExpenseCategory, on_delete=models.PROTECT, related_name='expenses')
+    supplier = models.ForeignKey('finance.Supplier', on_delete=models.SET_NULL, null=True, blank=True, related_name='expenses')
+    created_by = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='created_expenses')
+
+    # Financial details
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    is_recurring = models.BooleanField(default=False)
+    recurring_frequency = models.CharField(max_length=20, blank=True, help_text="monthly|quarterly|annually|custom")
+
+    # Documentation
+    receipt_image = models.ImageField(upload_to='expense_receipts/', blank=True, null=True)
+    invoice_number = models.CharField(max_length=100, blank=True)
+    reference_number = models.CharField(max_length=100, blank=True)
+
+    # Approval workflow
+    approved_by = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_expenses')
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approval_notes = models.TextField(blank=True)
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-expense_date', '-created_at']
+        verbose_name = 'Expense'
+        verbose_name_plural = 'Expenses'
+        indexes = [
+            models.Index(fields=['expense_date']),
+            models.Index(fields=['status']),
+            models.Index(fields=['property', 'category']),
+        ]
+
+    def __str__(self):
+        return f"{self.title} - {self.property.name} - R{self.total_amount}"
+
+
+class Budget(models.Model):
+    """Budget tracking by period, optionally scoped to property and/or category."""
+
+    PERIOD_CHOICES = [
+        ('monthly', 'Monthly'),
+        ('quarterly', 'Quarterly'),
+        ('annually', 'Annually'),
+    ]
+
+    name = models.CharField(max_length=200)
+    period = models.CharField(max_length=20, choices=PERIOD_CHOICES)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    total_budget = models.DecimalField(max_digits=12, decimal_places=2)
+
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, null=True, blank=True, related_name='budgets')
+    category = models.ForeignKey(ExpenseCategory, on_delete=models.CASCADE, null=True, blank=True, related_name='budgets')
+
+    spent_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-start_date', 'name']
+        verbose_name = 'Budget'
+        verbose_name_plural = 'Budgets'
+
+    def __str__(self):
+        scope = self.property.name if self.property else 'All Properties'
+        return f"{self.name} ({self.period}) - {scope}"
+
+    def remaining_amount_value(self):
+        """Compute remaining amount without using @property to avoid name clash with field 'property'."""
+        return (self.total_budget or Decimal('0.00')) - (self.spent_amount or Decimal('0.00'))

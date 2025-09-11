@@ -2,7 +2,8 @@ from rest_framework import serializers
 from .models import (
     Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog,
     TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings,
-    BankTransaction, ManualPayment, PaymentAllocation, Adjustment, CSVImportBatch, UnderpaymentAlert
+    BankTransaction, ManualPayment, PaymentAllocation, Adjustment, CSVImportBatch, UnderpaymentAlert,
+    ExpenseCategory, Supplier, Expense, Budget
 )
 from tenants.models import Tenant
 from leases.models import Lease
@@ -706,5 +707,80 @@ class TenantStatementSerializer(serializers.Serializer):
             if data['start_date'] > data['end_date']:
                 raise serializers.ValidationError("Start date must be before end date")
         return data
+
+
+# =============================
+# Expense Management Serializers
+# =============================
+
+class ExpenseCategorySerializer(serializers.ModelSerializer):
+    """Serializer for expense categories with parent reference name."""
+    parent_name = serializers.CharField(source='parent_category.name', read_only=True)
+
+    class Meta:
+        model = ExpenseCategory
+        fields = [
+            'id', 'name', 'description', 'parent_category', 'parent_name',
+            'is_active', 'tax_deductible', 'color_code', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'parent_name', 'created_at', 'updated_at']
+
+
+class SupplierSerializer(serializers.ModelSerializer):
+    """Serializer for suppliers/vendors."""
+
+    class Meta:
+        model = Supplier
+        fields = [
+            'id', 'name', 'contact_person', 'email', 'phone', 'address',
+            'payment_terms', 'is_preferred', 'notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ExpenseSerializer(serializers.ModelSerializer):
+    """Serializer for expenses with related display fields."""
+    property_name = serializers.CharField(source='property.name', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    supplier_name = serializers.CharField(source='supplier.name', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    approved_by_name = serializers.CharField(source='approved_by.get_full_name', read_only=True)
+
+    class Meta:
+        model = Expense
+        fields = [
+            'id', 'title', 'description', 'amount', 'tax_amount', 'total_amount',
+            'expense_date', 'status', 'property', 'property_name', 'category',
+            'category_name', 'supplier', 'supplier_name', 'created_by', 'created_by_name',
+            'is_recurring', 'recurring_frequency', 'receipt_image', 'invoice_number',
+            'reference_number', 'approved_by', 'approved_by_name', 'approved_at',
+            'approval_notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = [
+            'id', 'property_name', 'category_name', 'supplier_name', 'created_by_name',
+            'approved_by_name', 'created_at', 'updated_at'
+        ]
+
+
+class BudgetSerializer(serializers.ModelSerializer):
+    """Serializer for budgets with remaining amount property."""
+    property_name = serializers.CharField(source='property.name', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    remaining_amount = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Budget
+        fields = [
+            'id', 'name', 'period', 'start_date', 'end_date', 'total_budget',
+            'spent_amount', 'remaining_amount', 'is_active', 'property', 'property_name',
+            'category', 'category_name', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'remaining_amount', 'property_name', 'category_name', 'created_at', 'updated_at']
+
+    def get_remaining_amount(self, obj):
+        try:
+            return float(obj.remaining_amount_value())
+        except Exception:
+            return 0.0
 
         

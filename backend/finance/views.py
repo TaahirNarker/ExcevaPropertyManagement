@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from rest_framework import viewsets, status, filters
+from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -13,7 +14,9 @@ from .models import (
     Invoice, InvoiceLineItem, InvoiceTemplate, InvoicePayment, InvoiceAuditLog,
     TenantCreditBalance, RecurringCharge, RentEscalationLog, InvoiceDraft, SystemSettings,
     # Payment reconciliation models
-    BankTransaction, ManualPayment, PaymentAllocation
+    BankTransaction, ManualPayment, PaymentAllocation,
+    # Expense management models
+    ExpenseCategory, Supplier, Expense, Budget
 )
 from .serializers import (
     InvoiceSerializer, InvoiceCreateUpdateSerializer, InvoiceListSerializer,
@@ -23,7 +26,9 @@ from .serializers import (
     InvoiceDraftSerializer, PaymentAllocationSerializer, InvoiceNavigationSerializer, SystemSettingsSerializer,
     # Payment reconciliation serializers
     CSVImportRequestSerializer, ManualPaymentRequestSerializer, PaymentAllocationRequestSerializer,
-    AdjustmentRequestSerializer, BankTransactionSerializer, ManualPaymentSerializer, UnderpaymentAlertSerializer
+    AdjustmentRequestSerializer, BankTransactionSerializer, ManualPaymentSerializer, UnderpaymentAlertSerializer,
+    # Expense management serializers
+    ExpenseCategorySerializer, SupplierSerializer, ExpenseSerializer, BudgetSerializer
 )
 from .services import (
     InvoiceGenerationService, PaymentAllocationService, RentEscalationService,
@@ -875,13 +880,22 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
                 total=Sum('amount')
             )['total'] or Decimal('0.00')
             
-            # Calculate monthly expenses (from maintenance invoices) - simplified
-            monthly_expenses = Invoice.objects.filter(
-                line_items__category__in=['Maintenance', 'Repairs', 'Utilities'],
-                status='paid'
-            ).aggregate(
-                total=Sum('total_amount')
-            )['total'] or Decimal('0.00')
+            # Calculate monthly expenses from new Expense model
+            try:
+                from .models import Expense as _Expense
+                monthly_expenses = _Expense.objects.filter(
+                    expense_date__month=current_month,
+                    expense_date__year=current_year,
+                    status__in=['approved', 'paid']
+                ).aggregate(total=Sum('total_amount'))['total'] or Decimal('0.00')
+            except Exception:
+                # Fallback to legacy approximation using invoice line items
+                monthly_expenses = Invoice.objects.filter(
+                    line_items__category__in=['Maintenance', 'Repairs', 'Utilities'],
+                    status='paid'
+                ).aggregate(
+                    total=Sum('total_amount')
+                )['total'] or Decimal('0.00')
             
             # Calculate net profit
             net_profit = monthly_revenue - monthly_expenses
@@ -1591,6 +1605,125 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
             'vat_rate': vat_rate,
             'formatted': f'{vat_rate}%'
         })
+
+
+# =============================
+# Expense Management ViewSets
+# =============================
+
+class ExpenseCategoryViewSet(viewsets.ModelViewSet):
+    """CRUD for expense categories."""
+    queryset = ExpenseCategory.objects.all()
+    serializer_class = ExpenseCategorySerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'description']
+    filterset_fields = ['is_active', 'parent_category']
+    ordering_fields = ['name', 'created_at']
+    ordering = ['name']
+
+
+class SupplierViewSet(viewsets.ModelViewSet):
+    """CRUD for suppliers/vendors."""
+    queryset = Supplier.objects.all()
+    serializer_class = SupplierSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'contact_person', 'email', 'phone']
+    ordering_fields = ['name', 'created_at']
+    ordering = ['name']
+
+
+class ExpenseViewSet(viewsets.ModelViewSet):
+    """CRUD for expenses with filtering and ordering."""
+    serializer_class = ExpenseSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['property', 'category', 'supplier', 'status', 'expense_date']
+    search_fields = ['title', 'description', 'invoice_number', 'reference_number']
+    ordering_fields = ['expense_date', 'amount', 'total_amount', 'created_at']
+    ordering = ['-expense_date']
+
+    def get_queryset(self):
+        qs = Expense.objects.select_related('property', 'category', 'supplier', 'created_by', 'approved_by')
+        if self.request.user.is_staff:
+            return qs
+        # Default: show expenses created by user
+        return qs.filter(created_by=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def analytics(self, request):
+        """Return expense analytics for dashboard widgets."""
+        try:
+            from django.db.models.functions import TruncMonth
+            # Monthly totals for last 12 months
+            last12 = timezone.now().date().replace(day=1)
+            month_qs = (
+                Expense.objects
+                .filter(expense_date__lt=timezone.now().date())
+                .annotate(month=TruncMonth('expense_date'))
+                .values('month')
+                .annotate(total=Sum('total_amount'))
+                .order_by('month')
+            )
+            monthly = [
+                {
+                    'month': m['month'].strftime('%Y-%m') if m['month'] else '',
+                    'total': float(m['total'] or 0)
+                }
+                for m in month_qs
+            ]
+
+            # Totals by category
+            by_category = (
+                Expense.objects
+                .values('category__name')
+                .annotate(total=Sum('total_amount'))
+                .order_by('-total')
+            )
+            categories = [
+                {'category': row['category__name'] or 'Uncategorized', 'total': float(row['total'] or 0)}
+                for row in by_category
+            ]
+
+            # Top properties by spend (current month)
+            current_month = timezone.now().month
+            current_year = timezone.now().year
+            by_property = (
+                Expense.objects
+                .filter(expense_date__month=current_month, expense_date__year=current_year)
+                .values('property__name')
+                .annotate(total=Sum('total_amount'))
+                .order_by('-total')[:5]
+            )
+            properties = [
+                {'property_name': row['property__name'] or 'Unknown', 'total': float(row['total'] or 0)}
+                for row in by_property
+            ]
+
+            return Response({
+                'monthly_trend': monthly[-12:],
+                'by_category': categories,
+                'top_properties': properties,
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+
+
+class BudgetViewSet(viewsets.ModelViewSet):
+    """CRUD for budgets with simple filtering."""
+    queryset = Budget.objects.select_related('property', 'category')
+    serializer_class = BudgetSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['period', 'property', 'category', 'is_active']
+    search_fields = ['name']
+    ordering_fields = ['start_date', 'end_date', 'total_budget', 'spent_amount']
+    ordering = ['-start_date']
 
 # New Payment API Views
 class PaymentReconciliationViewSet(viewsets.ViewSet):
