@@ -1722,18 +1722,37 @@ class PaymentReconciliationService:
                 'balance': float(opening_balance)
             })
             
-            # Add invoices
+            # Add invoices with individual line items
             for invoice in invoices:
-                transactions.append({
-                    'date': invoice.issue_date,
-                    'type': 'invoice',
-                    'description': f"{invoice.title or 'Invoice'} - {invoice.invoice_number}",
-                    'reference': invoice.invoice_number,
-                    'charges': float(invoice.total_amount),
-                    'payments': 0,
-                    'adjustments': 0,
-                    'balance': 0  # running balance will be computed after sorting
-                })
+                # Get all line items for this invoice
+                line_items = invoice.line_items.all().order_by('created_at')
+                
+                if line_items.exists():
+                    # Add each line item as a separate transaction
+                    for line_item in line_items:
+                        transactions.append({
+                            'date': invoice.issue_date,
+                            'type': 'invoice_line_item',
+                            'description': line_item.description,
+                            'reference': invoice.invoice_number,
+                            'charges': float(line_item.total),
+                            'payments': 0,
+                            'adjustments': 0,
+                            'category': line_item.category,
+                            'balance': 0  # running balance will be computed after sorting
+                        })
+                else:
+                    # Fallback to invoice total if no line items (shouldn't happen)
+                    transactions.append({
+                        'date': invoice.issue_date,
+                        'type': 'invoice',
+                        'description': f"{invoice.title or 'Invoice'} - {invoice.invoice_number}",
+                        'reference': invoice.invoice_number,
+                        'charges': float(invoice.total_amount),
+                        'payments': 0,
+                        'adjustments': 0,
+                        'balance': 0
+                    })
             
             # Add allocated invoice payments (reflected in financial sections and balances)
             for pay in invoice_payments:

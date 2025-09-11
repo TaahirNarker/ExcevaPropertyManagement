@@ -1,6 +1,6 @@
 from django.test import TestCase
 from django.utils import timezone
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from tenants.models import Tenant
@@ -503,7 +503,8 @@ class InitialInvoiceOnLeaseCreationTest(TestCase):
 
     def test_initial_invoice_created_and_statement_shows_balance(self):
         today = timezone.now().date()
-        first_of_month = today.replace(day=1)
+        # Use next month to avoid overdue status
+        first_of_month = (today.replace(day=1) + timedelta(days=32)).replace(day=1)
 
         lease = Lease.objects.create(
             property=self.property,
@@ -534,11 +535,28 @@ class InitialInvoiceOnLeaseCreationTest(TestCase):
         statement = service.get_tenant_statement(
             tenant_id=self.tenant.id,
             start_date=first_of_month,
-            end_date=today,
+            end_date=first_of_month + timedelta(days=30),  # Use future end date
             lease_id=lease.id
         )
         self.assertTrue(statement['success'])
         self.assertGreater(statement['summary']['closing_balance'], 0.0)
+        
+        # Verify that individual line items are shown in the statement
+        transactions = statement.get('transactions', [])
+        line_item_transactions = [t for t in transactions if t.get('type') == 'invoice_line_item']
+        
+        # Should have 2 line items: Monthly Rent and Security Deposit
+        self.assertEqual(len(line_item_transactions), 2, 'Statement should show 2 individual line items')
+        
+        # Check that we have both Monthly Rent and Security Deposit as separate entries
+        descriptions = [t['description'] for t in line_item_transactions]
+        self.assertIn('Monthly Rent', descriptions, 'Monthly Rent should appear as separate line item')
+        self.assertIn('Security Deposit', descriptions, 'Security Deposit should appear as separate line item')
+        
+        # Verify categories are preserved
+        categories = [t.get('category', '') for t in line_item_transactions]
+        self.assertIn('Rent', categories, 'Rent category should be preserved')
+        self.assertIn('Security Deposit', categories, 'Security Deposit category should be preserved')
 
 
 class InitialInvoiceIssueDateTest(TestCase):
