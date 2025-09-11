@@ -931,15 +931,15 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
                 if invoice.due_date:
                     days_overdue = (timezone.now().date() - invoice.due_date).days
                 
-                # Determine status
+                # Determine payment status
                 if days_overdue > 30:
-                    status = 'delinquent'
+                    payment_status = 'delinquent'
                 elif days_overdue > 15:
-                    status = 'overdue'
+                    payment_status = 'overdue'
                 elif days_overdue > 5:
-                    status = 'late'
+                    payment_status = 'late'
                 else:
-                    status = 'current'
+                    payment_status = 'current'
                 
                 # Get last payment date
                 last_payment = InvoicePayment.objects.filter(
@@ -948,19 +948,35 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
                 
                 last_payment_date = last_payment.payment_date if last_payment else None
                 
+                # Extract unit number from property name (similar to lease serializer logic)
+                unit_number = 'N/A'
+                if invoice.property and invoice.property.parent_property:
+                    # This is a sub-property (unit), extract unit number from name
+                    property_name = invoice.property.name
+                    import re
+                    unit_match = re.search(r'(?:unit|apt|apartment|suite)\s*([a-z0-9-]+)', property_name.lower())
+                    if unit_match:
+                        unit_number = unit_match.group(1).upper()
+                    else:
+                        # If no unit number found, use the property name as unit identifier
+                        unit_number = property_name
+                
                 rental_outstanding.append({
                     'id': str(invoice.id),
-                    'tenant_name': invoice.tenant.name,
-                    'property_name': invoice.property.name,
-                    'unit_number': 'N/A',  # Lease doesn't have unit relationship
-                    'amount_due': float(invoice.total_amount),
+                    'tenant_name': invoice.tenant.user.get_full_name() if invoice.tenant and invoice.tenant.user else 'Unknown',
+                    'property_name': invoice.property.name if invoice.property else 'Unknown',
+                    'unit_number': unit_number,
+                    'amount_due': float(invoice.balance_due),  # Use balance_due instead of total_amount
                     'days_overdue': max(0, days_overdue),
                     'last_payment_date': last_payment_date.isoformat() if last_payment_date else None,
-                    'status': status,
+                    'status': payment_status,
                 })
             
             return Response(rental_outstanding)
         except Exception as e:
+            import traceback
+            print(f"Error in rental_outstanding: {str(e)}")
+            print(f"Traceback: {traceback.format_exc()}")
             return Response(
                 {'error': str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
