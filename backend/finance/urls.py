@@ -38,6 +38,8 @@ urlpatterns = [
     path('supplier-payments/', FinanceAPIViewSet.as_view({'get': 'supplier_payments'}), name='finance-supplier-payments'),
     path('bank-transactions/', FinanceAPIViewSet.as_view({'get': 'bank_transactions'}), name='finance-bank-transactions'),
     path('lease-financials/', FinanceAPIViewSet.as_view({'get': 'lease_financials'}), name='lease-financials'),
+    path('deposit-summary/', FinanceAPIViewSet.as_view({'get': 'deposit_summary'}), name='deposit-summary'),
+    path('deposit-details/', FinanceAPIViewSet.as_view({'get': 'deposit_details'}), name='deposit-details'),
     
     # New Payment Reconciliation endpoints
     path('import-csv/', PaymentReconciliationViewSet.as_view({'post': 'import_csv'}), name='import-csv'),

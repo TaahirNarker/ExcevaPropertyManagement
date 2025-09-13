@@ -1394,6 +1394,166 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=False, methods=['get'])
+    def deposit_summary(self, request):
+        """Get comprehensive deposit summary with breakdown by landlord/agent"""
+        try:
+            from django.db.models import Q, Sum, Case, When, DecimalField, F
+            from decimal import Decimal
+            
+            # Get all active leases with deposits
+            active_leases = Lease.objects.filter(
+                status='active',
+                deposit_amount__gt=0
+            ).select_related('property', 'tenant', 'landlord')
+            
+            # Calculate total deposits from lease amounts (not just paid invoices)
+            total_deposits_held = active_leases.aggregate(
+                total=Sum('deposit_amount')
+            )['total'] or Decimal('0.00')
+            
+            # Calculate deposits by landlord (90% of total deposits)
+            deposits_by_landlord = total_deposits_held * Decimal('0.90')
+            
+            # Calculate deposits by agent (10% management fee)
+            deposits_by_agent = total_deposits_held * Decimal('0.10')
+            
+            # Calculate outstanding deposits (deposits that haven't been paid yet)
+            # This is deposits from leases minus deposits that have been paid via invoices
+            paid_deposits = Invoice.objects.filter(
+                line_items__category='Security Deposit',
+                status='paid'
+            ).aggregate(
+                total=Sum('total_amount')
+            )['total'] or Decimal('0.00')
+            
+            outstanding_deposits = total_deposits_held - paid_deposits
+            
+            return Response({
+                'total_deposits_held': float(total_deposits_held),
+                'deposits_by_landlord': float(deposits_by_landlord),
+                'deposits_by_agent': float(deposits_by_agent),
+                'outstanding_deposits': float(outstanding_deposits)
+            })
+            
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['get'])
+    def deposit_details(self, request):
+        """Get detailed deposit information with tenant listings"""
+        try:
+            from django.db.models import Q, Sum, Case, When, DecimalField, F
+            from decimal import Decimal
+            
+            # Get filter parameters
+            deposit_type = request.GET.get('type', 'all')  # all, by_landlord, by_agent, outstanding
+            search = request.GET.get('search', '')
+            page_size = int(request.GET.get('page_size', 25))
+            page = int(request.GET.get('page', 1))
+            
+            # Base queryset for active leases with deposits
+            queryset = Lease.objects.filter(
+                status='active',
+                deposit_amount__gt=0
+            ).select_related('property', 'tenant', 'landlord')
+            
+            # Apply search filter
+            if search:
+                queryset = queryset.filter(
+                    Q(tenant__user__first_name__icontains=search) |
+                    Q(tenant__user__last_name__icontains=search) |
+                    Q(property__name__icontains=search) |
+                    Q(property__property_code__icontains=search)
+                )
+            
+            # Get deposit payment status for each lease
+            deposit_details = []
+            for lease in queryset:
+                # Check if deposit has been paid by looking for paid security deposit invoices
+                paid_deposit_amount = Invoice.objects.filter(
+                    lease=lease,
+                    line_items__category='Security Deposit',
+                    status='paid'
+                ).aggregate(
+                    total=Sum('total_amount')
+                )['total'] or Decimal('0.00')
+                
+                # Calculate how much of the deposit is still due
+                deposit_paid = paid_deposit_amount >= lease.deposit_amount
+                still_due = max(Decimal('0.00'), lease.deposit_amount - paid_deposit_amount)
+                
+                # Determine state
+                if deposit_paid:
+                    state = "Active, Invoice paid"
+                else:
+                    # Check if there are any unpaid deposit invoices
+                    unpaid_deposit_invoice = Invoice.objects.filter(
+                        lease=lease,
+                        line_items__category='Security Deposit',
+                        status__in=['sent', 'overdue', 'partially_paid', 'locked']
+                    ).first()
+                    
+                    if unpaid_deposit_invoice:
+                        state = "Active, Invoice due"
+                    else:
+                        state = "Active, No invoice"
+                
+                # Format property/tenant info
+                property_info = f"{lease.property.street_address}, {lease.property.name}, {lease.property.city}"
+                tenant_names = []
+                if lease.tenant.user.first_name:
+                    tenant_names.append(lease.tenant.user.first_name)
+                if lease.tenant.user.last_name:
+                    tenant_names.append(lease.tenant.user.last_name)
+                tenant_name = " ".join(tenant_names) if tenant_names else "Unknown"
+                
+                deposit_details.append({
+                    'lease_id': f"LEA{lease.id:06d}",
+                    'property_tenant': f"{property_info}, {tenant_name}",
+                    'state': state,
+                    'held': float(lease.deposit_amount),
+                    'still_due': float(still_due),
+                    'landlord_name': lease.landlord.name if lease.landlord else 'Unassigned',
+                    'deposit_paid': deposit_paid,
+                    'lease_start': lease.start_date.isoformat(),
+                    'lease_end': lease.end_date.isoformat()
+                })
+            
+            # Apply deposit type filter
+            if deposit_type == 'by_landlord':
+                # Show deposits that have been paid (landlord gets their share)
+                deposit_details = [d for d in deposit_details if d['deposit_paid']]
+            elif deposit_type == 'by_agent':
+                # Show deposits that have been paid (agent gets their share)
+                deposit_details = [d for d in deposit_details if d['deposit_paid']]
+            elif deposit_type == 'outstanding':
+                # Show deposits that haven't been paid yet
+                deposit_details = [d for d in deposit_details if not d['deposit_paid']]
+            
+            # Pagination
+            total_count = len(deposit_details)
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            paginated_details = deposit_details[start_idx:end_idx]
+            
+            return Response({
+                'results': paginated_details,
+                'count': total_count,
+                'page': page,
+                'page_size': page_size,
+                'total_pages': (total_count + page_size - 1) // page_size
+            })
+        
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class PaymentAllocationViewSet(viewsets.ViewSet):
     """

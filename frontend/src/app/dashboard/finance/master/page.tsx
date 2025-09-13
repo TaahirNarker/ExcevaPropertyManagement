@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
-import { financeApi, leaseApi, invoiceApi } from '@/lib/api';
+import { financeApi, leaseApi, invoiceApi, DepositSummary } from '@/lib/api';
 import CSVImportModal from '@/components/CSVImportModal';
 import ExpenseForm from '@/components/ExpenseForm';
 import ExpenseList from '@/components/ExpenseList';
@@ -53,7 +53,8 @@ import {
   PhoneIcon,
   TruckIcon,
   CurrencyDollarIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  ArrowTopRightOnSquareIcon
 } from '@heroicons/react/24/outline';
 
 // Comprehensive income exports
@@ -176,6 +177,7 @@ export default function MasterFinancePage() {
   // State
   const [activeTab, setActiveTab] = useState<'overview' | 'incomes' | 'expenses' | 'commissions' | 'transactions'>('overview');
   const [financialSummary, setFinancialSummary] = useState<FinancialSummary | null>(null);
+  const [depositSummary, setDepositSummary] = useState<DepositSummary | null>(null);
   const [rentalOutstanding, setRentalOutstanding] = useState<RentalOutstanding[]>([]);
   const [recentPayments, setRecentPayments] = useState<Payment[]>([]);
   const [landlordPayments, setLandlordPayments] = useState<LandlordPayment[]>([]);
@@ -375,6 +377,10 @@ export default function MasterFinancePage() {
           // Fetch financial summary
           const summary = await financeApi.getFinancialSummary();
           setFinancialSummary(summary);
+          
+          // Fetch deposit summary
+          const depositSummary = await financeApi.getDepositSummary();
+          setDepositSummary(depositSummary);
           
           // Fetch rental outstanding
           const outstanding = await financeApi.getRentalOutstanding();
@@ -810,25 +816,31 @@ export default function MasterFinancePage() {
 
             {/* Financial Summary */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6">
-                <h3 className="text-lg font-medium text-foreground mb-4">Deposits & Payments</h3>
+              <div 
+                className="bg-card/80 backdrop-blur-lg rounded-lg border border-border p-6 cursor-pointer hover:shadow-lg hover:border-primary/50 hover:ring-2 hover:ring-primary/20 transition-all duration-200 group"
+                onClick={() => router.push('/dashboard/finance/deposits')}
+              >
+                <h3 className="text-lg font-medium text-foreground mb-4 group-hover:text-primary transition-colors duration-200 flex items-center gap-2">
+                  Deposits & Payments
+                  <ArrowTopRightOnSquareIcon className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                </h3>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Deposits Held</span>
                     <span className="text-foreground font-medium">
-                      {formatCurrency(financialSummary?.deposits_held || 0)}
+                      {formatCurrency(depositSummary?.total_deposits_held || 0)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Due to Landlords</span>
                     <span className="text-orange-400 font-medium">
-                      {formatCurrency(financialSummary?.payments_due_landlords || 0)}
+                      {formatCurrency(depositSummary?.deposits_by_landlord || 0)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Due to Suppliers</span>
+                    <span className="text-muted-foreground">Outstanding</span>
                     <span className="text-red-400 font-medium">
-                      {formatCurrency(financialSummary?.payments_due_suppliers || 0)}
+                      {formatCurrency(depositSummary?.outstanding_deposits || 0)}
                     </span>
                   </div>
                 </div>

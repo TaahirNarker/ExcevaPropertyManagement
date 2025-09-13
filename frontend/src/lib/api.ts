@@ -340,6 +340,33 @@ export interface FinancialSummary {
   cash_flow: number;
 }
 
+export interface DepositSummary {
+  total_deposits_held: number;
+  deposits_by_landlord: number;
+  deposits_by_agent: number;
+  outstanding_deposits: number;
+}
+
+export interface DepositDetail {
+  lease_id: string;
+  property_tenant: string;
+  state: string;
+  held: number;
+  still_due: number;
+  landlord_name: string;
+  deposit_paid: boolean;
+  lease_start: string;
+  lease_end: string;
+}
+
+export interface DepositDetailsResponse {
+  results: DepositDetail[];
+  count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 export interface RentalOutstanding {
   id: string;
   tenant_name: string;
@@ -1100,6 +1127,17 @@ export const financeApi = {
     const response = await api.get('/finance/lease-financials/', {
       params: { lease_id: leaseId }
     });
+    return response.data;
+  },
+
+  // Deposit management
+  getDepositSummary: async (): Promise<DepositSummary> => {
+    const response = await api.get('/finance/deposit-summary/');
+    return response.data;
+  },
+
+  getDepositDetails: async (params?: any): Promise<DepositDetailsResponse> => {
+    const response = await api.get('/finance/deposit-details/', { params });
     return response.data;
   },
 };
