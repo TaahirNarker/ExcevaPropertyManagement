@@ -1412,12 +1412,6 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
                 total=Sum('deposit_amount')
             )['total'] or Decimal('0.00')
             
-            # Calculate deposits by landlord (90% of total deposits)
-            deposits_by_landlord = total_deposits_held * Decimal('0.90')
-            
-            # Calculate deposits by agent (10% management fee)
-            deposits_by_agent = total_deposits_held * Decimal('0.10')
-            
             # Calculate outstanding deposits (deposits that haven't been paid yet)
             # This is deposits from leases minus deposits that have been paid via invoices
             paid_deposits = Invoice.objects.filter(
@@ -1428,6 +1422,11 @@ class FinanceAPIViewSet(viewsets.GenericViewSet):
             )['total'] or Decimal('0.00')
             
             outstanding_deposits = total_deposits_held - paid_deposits
+            
+            # Calculate deposits by landlord and agent only from PAID deposits
+            # Landlord gets 90% of paid deposits, agent gets 10% management fee
+            deposits_by_landlord = paid_deposits * Decimal('0.90')
+            deposits_by_agent = paid_deposits * Decimal('0.10')
             
             return Response({
                 'total_deposits_held': float(total_deposits_held),
