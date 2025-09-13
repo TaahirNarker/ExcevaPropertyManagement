@@ -20,12 +20,20 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = authService.getAccessToken();
+    console.log('🔐 Request interceptor - Token available:', !!token);
+    console.log('🔐 Request URL:', config.url);
+    console.log('🔐 Request method:', config.method);
+    
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log('🔐 Authorization header set');
+    } else {
+      console.warn('⚠️ No authentication token available');
     }
     return config;
   },
   (error) => {
+    console.error('❌ Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -33,19 +41,26 @@ api.interceptors.request.use(
 // Handle token refresh on 401 errors
 api.interceptors.response.use(
   (response) => {
+    console.log('✅ Response received:', response.status, response.config.url);
     return response;
   },
   async (error) => {
+    console.error('❌ Response interceptor error:', error.response?.status, error.config?.url);
+    console.error('❌ Error details:', error.response?.data);
+    
     const originalRequest = error.config;
     
     if (error.response?.status === 401 && !originalRequest._retry) {
+      console.log('🔄 Attempting token refresh...');
       originalRequest._retry = true;
       
       try {
         const newToken = await authService.refreshToken();
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        console.log('✅ Token refreshed, retrying request');
         return api(originalRequest);
       } catch (refreshError) {
+        console.error('❌ Token refresh failed:', refreshError);
         // If refresh fails, clear tokens and redirect to login
         authService.clearTokens();
         if (typeof window !== 'undefined') {
@@ -1255,7 +1270,18 @@ export const invoiceApi = {
 
   // Delete invoice
   deleteInvoice: async (id: string | number): Promise<void> => {
-    await api.delete(`/finance/invoices/${id}/`);
+    console.log('🗑️ Deleting invoice with ID:', id);
+    console.log('🔗 API Base URL:', API_BASE_URL);
+    console.log('🔗 Full URL:', `${API_BASE_URL}/finance/invoices/${id}/`);
+    
+    try {
+      await api.delete(`/finance/invoices/${id}/`);
+      console.log('✅ Invoice deleted successfully');
+    } catch (error: any) {
+      console.error('❌ Delete invoice error:', error);
+      console.error('❌ Error response:', error.response);
+      throw error;
+    }
   },
 
   // Send invoice via email

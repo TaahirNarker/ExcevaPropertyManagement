@@ -1,7 +1,7 @@
-// Invoice Creation Page for Lease
+// Enhanced Invoice Creation Page for Lease
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import {
@@ -13,409 +13,869 @@ import {
   ClockIcon,
   CogIcon,
   PaperAirplaneIcon,
-  LockClosedIcon
+  LockClosedIcon,
+  DocumentTextIcon,
+  EyeIcon,
+  EnvelopeIcon,
+  TrashIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { invoiceApi } from '@/lib/api';
+import { 
+  enhancedInvoiceAPI, 
+  EnhancedInvoice, 
+  InvoiceLineItem as EnhancedLineItem,
+  InvoiceDraft,
+  TenantCreditBalance,
+  RecurringCharge,
+  PaymentAllocation 
+} from '@/lib/enhanced-invoice-api';
+import { LeaseAPI, Lease } from '@/lib/lease-api';
 
-const STATUS_OPTIONS = [
-  { value: 'not_actioned', label: 'Not yet actioned', icon: ClockIcon, color: 'text-muted-foreground/70' },
-  { value: 'ready', label: 'Ready to send', icon: CheckCircleIcon, color: 'text-green-500' },
-  { value: 'waiting_expenses', label: 'Waiting for expenses', icon: CogIcon, color: 'text-yellow-400' },
-  { value: 'urgent', label: 'Requires urgent attention', icon: ExclamationTriangleIcon, color: 'text-red-500' },
-];
+// Using the Lease interface from lease-api.ts
 
-function formatCurrency(amount: number) {
-  return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Enhanced Invoice Display Component
+interface EnhancedInvoiceDisplayProps {
+  lease: Lease;
+  currentBillingMonth: string;
+  generateInitialInvoice: () => Promise<void>;
+  tenantCreditBalance: TenantCreditBalance | null;
 }
+
+const EnhancedInvoiceDisplay: React.FC<EnhancedInvoiceDisplayProps> = ({
+  lease,
+  currentBillingMonth,
+  generateInitialInvoice,
+  tenantCreditBalance
+}) => {
+  const [showCreateInvoice, setShowCreateInvoice] = useState(false);
+  const [invoiceStatus, setInvoiceStatus] = useState('Not yet actioned');
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showChargeModal, setShowChargeModal] = useState(false);
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showBankDetails, setShowBankDetails] = useState(false);
+  const [notes, setNotes] = useState('Kindly ensure the correct reference number (your lease number) is utilised as a penalty will be incurred after two incorrect references are used.');
+  const [emailRecipients, setEmailRecipients] = useState([
+    { type: 'email', value: lease.tenant.email, label: lease.tenant.email },
+    { type: 'email', value: 'info@narkerproperty.com', label: 'info@narkerproperty.com' }
+  ]);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [invoiceData, setInvoiceData] = useState<EnhancedInvoice | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load invoice data for the current billing month
+  useEffect(() => {
+    const loadInvoiceData = async () => {
+      if (!lease) return;
+      
+      setIsLoading(true);
+      try {
+        const response = await enhancedInvoiceAPI.navigateToMonth(lease.id, currentBillingMonth);
+        
+        if (response.has_invoice && response.invoice) {
+          setInvoiceData(response.invoice);
+          setInvoiceStatus(response.invoice.status || 'Not yet actioned');
+        } else {
+          setInvoiceData(null);
+        }
+      } catch (error) {
+        console.error('Error loading invoice data:', error);
+        setInvoiceData(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadInvoiceData();
+  }, [lease, currentBillingMonth]);
+
+  // Calculate values from invoice data or use defaults
+  const depositHeld = lease.deposit_amount || 17000.00;
+  const openingBalance = invoiceData ? 0 : 23516.67; // Will be calculated from actual transactions
+  const totalDue = invoiceData ? invoiceData.balance_due : 8500.00;
+  
+  // Generate transactions from invoice data
+  const transactions = invoiceData ? [
+    // Add opening balance if it exists
+    ...(invoiceData.line_items.map(item => ({
+      id: item.id || Math.random(),
+      date: invoiceData.issue_date || new Date().toISOString().split('T')[0],
+      description: `[${item.category || 'Charge'}] ${item.description}`,
+      reference: '',
+      amount: item.total,
+      type: 'charge'
+    }))),
+    // Add payments
+    ...(invoiceData.payments.map(payment => ({
+      id: payment.id,
+      date: payment.payment_date,
+      description: `[Payment] ${payment.payment_method} - Thank You`,
+      reference: payment.reference_number || '',
+      amount: -payment.amount,
+      type: 'payment'
+    })))
+  ] : [
+    // Mock data when no invoice exists
+    {
+      id: 1,
+      date: '2025-08-29',
+      description: '[Payment] Rental Deposit Payment - Thank You',
+      reference: 'LEA000978',
+      amount: -17000.00,
+      type: 'payment'
+    },
+    {
+      id: 2,
+      date: '2025-08-30',
+      description: '[Payment] Rental Payment - Thank You',
+      reference: 'LEA000978',
+      amount: -6516.67,
+      type: 'payment'
+    },
+    {
+      id: 3,
+      date: '2025-10-01',
+      description: '[Rent] Rent due',
+      reference: '',
+      amount: 8500.00,
+      type: 'charge'
+    }
+  ];
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-ZA', {
+      style: 'currency',
+      currency: 'ZAR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+  const removeDeliveryOption = (index: number) => {
+    setEmailRecipients(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const addDeliveryOption = () => {
+    // In a real implementation, this would open a modal to add new delivery options
+    console.log('Add new delivery option');
+  };
+
+  const sendInvoice = async () => {
+    if (!invoiceData) {
+      console.error('No invoice data to send');
+      return;
+    }
+
+    try {
+      // Send invoice (this will update status and send email)
+      const response = await enhancedInvoiceAPI.sendInvoice(invoiceData.id);
+      setInvoiceData(response.invoice);
+      setInvoiceStatus('Sent');
+      
+      console.log('Invoice sent successfully');
+    } catch (error) {
+      console.error('Error sending invoice:', error);
+    }
+  };
+
+  const previewInvoice = () => {
+    if (!invoiceData) {
+      console.error('No invoice data to preview');
+      return;
+    }
+
+    // In a real implementation, this would open a preview modal or generate PDF
+    console.log('Previewing invoice:', invoiceData);
+    // Could open a modal with the invoice preview or generate a PDF
+  };
+
+  if (isLoading) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="flex items-center space-x-2 text-gray-600">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span>Loading invoice data...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      {/* Show enhanced display if we have invoice data or if we're creating an invoice */}
+      {invoiceData || showCreateInvoice ? (
+        <>
+          {/* Header Section */}
+          <div className="flex justify-between items-start mb-6">
+            <div className="flex-1">
+              <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                Current Invoice | {new Date(currentBillingMonth).toLocaleDateString('en-US', { 
+                  day: 'numeric', 
+                  month: 'long', 
+                  year: 'numeric' 
+                })}
+              </h2>
+          
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Side - Tenant Information */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-sm font-medium text-gray-700">To:</span>
+                <span className="text-sm text-gray-900">{lease.tenant.name}</span>
+                <button className="text-blue-600 text-sm hover:text-blue-800">Change</button>
+              </div>
+              <div className="text-sm text-gray-600">
+                Unit 112, Ujala Towers<br />
+                258 Main Rd, Kirstenhof<br />
+                Cape Town, Western Cape, 7945
+              </div>
+            </div>
+
+            {/* Right Side - Invoice Details */}
+            <div className="text-right">
+              <div className="text-lg font-semibold text-gray-900 mb-3">Tax Invoice</div>
+              <div className="space-y-1 text-sm">
+                <div><span className="font-medium">Invoice Number:</span> {invoiceData?.invoice_number || 'INV0004210986'}</div>
+                <div><span className="font-medium">Due Date:</span> {invoiceData?.due_date ? new Date(invoiceData.due_date).toLocaleDateString('en-CA') : new Date(currentBillingMonth).toLocaleDateString('en-CA')}</div>
+                <div><span className="font-medium">Deposit Held:</span> {formatCurrency(depositHeld)}</div>
+                <div><span className="font-medium">Payment Reference:</span> {lease.property?.property_code || 'LEA000978'}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-2 mb-4">
+        <button 
+          onClick={() => setShowPaymentModal(true)}
+          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm font-medium"
+        >
+          Add payment
+        </button>
+        <button 
+          onClick={() => setShowChargeModal(true)}
+          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm font-medium"
+        >
+          Add charge
+        </button>
+        <button 
+          onClick={() => setShowCreditModal(true)}
+          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm font-medium"
+        >
+          Issue credit
+        </button>
+        <button 
+          onClick={() => setShowRefundModal(true)}
+          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm font-medium"
+        >
+          Issue refund
+        </button>
+        <button 
+          onClick={() => setShowDepositModal(true)}
+          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded text-sm font-medium"
+        >
+          Use deposit
+        </button>
+      </div>
+
+      {/* Invoice Status */}
+      <div className="mb-4">
+        <div className="relative">
+          <button
+            onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded text-sm"
+          >
+            <input type="checkbox" checked className="mr-2" />
+            {invoiceStatus}
+            <ChevronDownIcon className="h-4 w-4" />
+          </button>
+          {showStatusDropdown && (
+            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded shadow-lg z-10 min-w-[200px]">
+              <div className="py-1">
+                {['Not yet actioned', 'Sent', 'Paid', 'Overdue'].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => {
+                      setInvoiceStatus(status);
+                      setShowStatusDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Transaction Table */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden mb-6">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Date ↑</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Description</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Reference</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Amount</th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            <tr>
+              <td className="px-4 py-3 text-sm text-gray-900"></td>
+              <td className="px-4 py-3 text-sm text-gray-900">Opening Balance</td>
+              <td className="px-4 py-3 text-sm text-gray-500"></td>
+              <td className="px-4 py-3 text-sm text-gray-900 font-medium">{formatCurrency(openingBalance)}</td>
+              <td className="px-4 py-3 text-sm text-gray-500"></td>
+            </tr>
+            {transactions.map((transaction) => (
+              <tr key={transaction.id}>
+                <td className="px-4 py-3 text-sm text-gray-900">{formatDate(transaction.date)}</td>
+                <td className="px-4 py-3 text-sm text-gray-900">{transaction.description}</td>
+                <td className="px-4 py-3 text-sm text-gray-500">{transaction.reference}</td>
+                <td className={`px-4 py-3 text-sm font-medium ${transaction.amount < 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                  {formatCurrency(transaction.amount)}
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  <button className="text-blue-600 hover:text-blue-800 mr-3">Edit</button>
+                  <button className="text-red-600 hover:text-red-800">Delete</button>
+                </td>
+              </tr>
+            ))}
+            <tr className="bg-gray-50">
+              <td className="px-4 py-3 text-sm font-semibold text-gray-900" colSpan={2}>Total Due</td>
+              <td className="px-4 py-3 text-sm text-gray-500"></td>
+              <td className="px-4 py-3 text-sm font-bold text-gray-900">{formatCurrency(totalDue)}</td>
+              <td className="px-4 py-3 text-sm text-gray-500"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Notes Section */}
+      <div className="mb-6">
+        <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+          <DocumentTextIcon className="h-5 w-5 text-gray-500 mt-0.5" />
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Add a note to this invoice (optional)
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-lg text-sm"
+              rows={3}
+            />
+          </div>
+          <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">Change note</button>
+        </div>
+      </div>
+
+      {/* Delivery Options */}
+      <div className="mb-6">
+        <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+          <EnvelopeIcon className="h-5 w-5 text-gray-500 mt-0.5" />
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Deliver invoice to:
+            </label>
+            <div className="space-y-2">
+              {emailRecipients.map((recipient, index) => (
+                <div key={index} className="flex items-center justify-between bg-white p-2 rounded border">
+                  <span className="text-sm text-gray-900">
+                    {recipient.type === 'email' ? 'Email' : 'Sms'}: {recipient.label}
+                  </span>
+                  <button 
+                    onClick={() => removeDeliveryOption(index)}
+                    className="text-red-600 hover:text-red-800"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <input
+                type="text"
+                placeholder="Email subject: Enter a custom email subject (Optional)"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded text-sm"
+              />
+            </div>
+          </div>
+          <button 
+            onClick={addDeliveryOption}
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          >
+            + Add new delivery option
+          </button>
+        </div>
+      </div>
+
+      {/* Bank Details */}
+      <div className="mb-6">
+        <button
+          onClick={() => setShowBankDetails(!showBankDetails)}
+          className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg w-full text-left hover:bg-gray-100"
+        >
+          <div className="flex items-center gap-2">
+            {showBankDetails ? <MinusIcon className="h-4 w-4" /> : <PlusIcon className="h-4 w-4" />}
+            <CheckCircleIcon className="h-5 w-5 text-gray-500" />
+          </div>
+          <span className="text-sm font-medium text-gray-700">
+            View your bank account and contact details
+          </span>
+        </button>
+        {showBankDetails && (
+          <div className="mt-3 p-4 bg-white border border-gray-200 rounded-lg">
+            <div className="text-sm text-gray-600">
+              <p className="font-medium mb-2">Bank Account Details:</p>
+              <p>Bank: Standard Bank</p>
+              <p>Account Number: 1234567890</p>
+              <p>Branch Code: 051001</p>
+              <p className="mt-2 font-medium">Contact Information:</p>
+              <p>Phone: +27 21 123 4567</p>
+              <p>Email: info@narkerproperty.com</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex justify-between">
+        <button
+          onClick={sendInvoice}
+          className="inline-flex items-center px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+        >
+          <EnvelopeIcon className="h-5 w-5 mr-2" />
+          Send Invoice
+        </button>
+        <button
+          onClick={previewInvoice}
+          className="inline-flex items-center px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium"
+        >
+          <EyeIcon className="h-5 w-5 mr-2" />
+          Preview
+        </button>
+      </div>
+        </>
+      ) : (
+        /* Show create invoice prompt when no invoice exists */
+        <div className="text-center py-12">
+          <DocumentTextIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-500 mb-2">No Invoice for This Month</h3>
+          <p className="text-gray-400 mb-4">
+            There is no invoice data available for {new Date(currentBillingMonth).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}.
+          </p>
+          <button 
+            onClick={() => {
+              setShowCreateInvoice(true);
+              generateInitialInvoice();
+            }}
+            className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+          >
+            <PlusIcon className="h-5 w-5 mr-2" />
+            Create Invoice
+          </button>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4">Add Payment</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Amount</label>
+                <input
+                  type="number"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Payment Method</label>
+                <select className="w-full border rounded px-3 py-2">
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="cash">Cash</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="card">Card</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Reference</label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="Payment reference"
+                />
+              </div>
+            </div>
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setShowPaymentModal(false)}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Add Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Charge Modal */}
+      {showChargeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4">Add Charge</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="Charge description"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Amount</label>
+                <input
+                  type="number"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Category</label>
+                <select className="w-full border rounded px-3 py-2">
+                  <option value="rent">Rent</option>
+                  <option value="utilities">Utilities</option>
+                  <option value="maintenance">Maintenance</option>
+                  <option value="late_fee">Late Fee</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={() => setShowChargeModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setShowChargeModal(false)}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Add Charge
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Credit Modal */}
+      {showCreditModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4">Issue Credit</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="Credit description"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Amount</label>
+                <input
+                  type="number"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Reason</label>
+                <select className="w-full border rounded px-3 py-2">
+                  <option value="refund">Refund</option>
+                  <option value="discount">Discount</option>
+                  <option value="adjustment">Adjustment</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={() => setShowCreditModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setShowCreditModal(false)}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Issue Credit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Refund Modal */}
+      {showRefundModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4">Issue Refund</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Amount</label>
+                <input
+                  type="number"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="0.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Method</label>
+                <select className="w-full border rounded px-3 py-2">
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="cash">Cash</option>
+                  <option value="cheque">Cheque</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Reason</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2"
+                  rows={3}
+                  placeholder="Refund reason"
+                />
+              </div>
+            </div>
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={() => setShowRefundModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setShowRefundModal(false)}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Issue Refund
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deposit Modal */}
+      {showDepositModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold mb-4">Use Deposit</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Amount to Use</label>
+                <input
+                  type="number"
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="0.00"
+                  max={depositHeld}
+                />
+                <p className="text-sm text-gray-500 mt-1">
+                  Available deposit: {formatCurrency(depositHeld)}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Purpose</label>
+                <select className="w-full border rounded px-3 py-2">
+                  <option value="rent_payment">Rent Payment</option>
+                  <option value="damage_repair">Damage Repair</option>
+                  <option value="outstanding_charges">Outstanding Charges</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <textarea
+                  className="w-full border rounded px-3 py-2"
+                  rows={3}
+                  placeholder="Deposit usage description"
+                />
+              </div>
+            </div>
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={() => setShowDepositModal(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => setShowDepositModal(false)}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Use Deposit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function InvoiceCreatePage() {
   const router = useRouter();
   const params = useParams();
   const leaseId = Array.isArray(params?.id) ? params.id[0] : params?.id;
 
-  // Invoice state
-  const [title, setTitle] = useState('');
-  const [invoiceNumber, setInvoiceNumber] = useState('INV-001');
-  const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dueDate, setDueDate] = useState(new Date(Date.now() + 30*24*60*60*1000).toISOString().slice(0, 10));
-  const [status, setStatus] = useState('ready');
-  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
-  const [fromDetails, setFromDetails] = useState('Your company details...');
-  const [toDetails, setToDetails] = useState('Client details...');
-  const [lineItems, setLineItems] = useState([
-    { description: 'Item description', category: '', quantity: 1, price: 0, total: 0 },
-    { description: 'Item description', category: '', quantity: 1, price: 0, total: 0 },
-  ]);
-  const [notes, setNotes] = useState('');
-  const [emailSubject, setEmailSubject] = useState('');
-  const [emailRecipient, setEmailRecipient] = useState('cs.safarimarker@gmail.com');
-  const [bankInfo, setBankInfo] = useState('');
-  const [extraNotes, setExtraNotes] = useState('');
+  // Create API instances
+  const leaseAPI = new LeaseAPI();
+  
+  const [lease, setLease] = useState<Lease | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Enhanced Invoice state
+  const [currentBillingMonth, setCurrentBillingMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [tenantCreditBalance, setTenantCreditBalance] = useState<TenantCreditBalance | null>(null);
 
-  // Invoice creation and sending state
-  const [createdInvoice, setCreatedInvoice] = useState<any>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [isSending, setIsSending] = useState(false);
-  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-
-  // Line item handlers
-  const handleLineChange = (idx: number, field: string, value: any) => {
-    setLineItems(items => items.map((item, i) =>
-      i === idx ? { ...item, [field]: value, total: field === 'quantity' || field === 'price' ? (field === 'quantity' ? value * item.price : item.quantity * value) : item.quantity * item.price } : item
-    ));
-  };
-  const addLine = () => setLineItems([...lineItems, { description: '', category: '', quantity: 1, price: 0, total: 0 }]);
-  const removeLine = (idx: number) => setLineItems(items => items.filter((_, i) => i !== idx));
-
-  // Invoice creation and sending functions
-  const createInvoice = async () => {
-    if (!leaseId) {
-      alert('No lease ID found');
-      return null;
-    }
-
-    setIsCreating(true);
-    try {
-      const invoiceData = {
-        title: title || 'Monthly Invoice',
-        issue_date: issueDate,
-        due_date: dueDate,
-        lease: leaseId,
-        status: 'draft',
-        tax_rate: taxRate,
-        notes: notes,
-        email_subject: emailSubject,
-        email_recipient: emailRecipient,
-        bank_info: bankInfo,
-        extra_notes: extraNotes,
-        line_items: lineItems.map(item => ({
-          description: item.description,
-          category: item.category || 'general',
-          quantity: item.quantity,
-          unit_price: item.price,
-        })).filter(item => item.description.trim() !== '')
-      };
-
-      const invoice = await invoiceApi.createInvoice(invoiceData);
-      setCreatedInvoice(invoice);
-      alert('Invoice created successfully!');
-      return invoice;
-    } catch (error) {
-      console.error('Failed to create invoice:', error);
-      alert('Failed to create invoice. Please try again.');
-      return null;
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  const sendInvoice = async () => {
-    let invoice = createdInvoice;
-    
-    // Create invoice first if it doesn't exist
-    if (!invoice) {
-      invoice = await createInvoice();
-      if (!invoice) return;
-    }
-
-    setIsSending(true);
-    try {
-      const result = await invoiceApi.sendInvoice(invoice.id, 'email', emailRecipient);
-      
-      if (result.success) {
-        // Update the invoice state to reflect it's been sent
-        setCreatedInvoice({
-          ...invoice,
-          status: result.status || 'locked',
-          is_locked: true
-        });
-        setShowSuccessMessage(true);
-        setTimeout(() => setShowSuccessMessage(false), 5000);
-      } else {
-        alert(`Failed to send invoice: ${result.message}`);
+  // Fetch real lease data
+  useEffect(() => {
+    const fetchLease = async () => {
+      try {
+        setLoading(true);
+        const leaseData = await leaseAPI.getLease(parseInt(leaseId || '1'));
+        setLease(leaseData);
+        console.log('Fetched lease data:', leaseData);
+        
+      } catch (err) {
+        console.error('Error fetching lease:', err);
+        setError('Failed to load lease data');
+      } finally {
+        setLoading(false);
       }
+    };
+
+    if (leaseId) {
+      fetchLease();
+    }
+  }, [leaseId]);
+
+  // Load tenant credit balance
+  useEffect(() => {
+    const loadCreditBalance = async () => {
+      if (!lease?.tenant?.id) return;
+      
+      try {
+        const balance = await enhancedInvoiceAPI.getTenantCreditBalance(lease.tenant.id);
+        setTenantCreditBalance(balance);
+      } catch (error) {
+        console.warn('Could not load tenant credit balance:', error);
+      }
+    };
+
+    if (lease) {
+      loadCreditBalance();
+    }
+  }, [lease]);
+
+  // Generate initial invoice
+  const generateInitialInvoice = async () => {
+    if (!lease) return;
+    
+    try {
+      const response = await enhancedInvoiceAPI.generateInitialInvoice(lease.id);
+      console.log('Generated initial invoice:', response);
     } catch (error) {
-      console.error('Failed to send invoice:', error);
-      alert('Failed to send invoice. Please try again.');
-    } finally {
-      setIsSending(false);
+      console.error('Error generating initial invoice:', error);
     }
   };
 
-  const canSendInvoice = () => {
-    return createdInvoice && invoiceApi.canSend(createdInvoice);
-  };
+  // Loading and error states
+  if (loading) {
+    return (
+      <DashboardLayout title="Invoice Management">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
-  const isInvoiceLocked = () => {
-    return createdInvoice && invoiceApi.isLocked(createdInvoice);
-  };
+  if (error && !lease) {
+    return (
+      <DashboardLayout title="Invoice Management">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-red-600 mb-4">Error Loading Lease</h2>
+            <p className="text-gray-600">{error}</p>
+            <button 
+              onClick={() => router.back()}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
-  // Totals
-  const subtotal = lineItems.reduce((sum, item) => sum + (item.total || 0), 0);
-  const taxRate = 0;
-  const tax = subtotal * (taxRate / 100);
-  const total = subtotal + tax;
+  if (!lease) {
+    return (
+      <DashboardLayout title="Lease Not Found">
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <ExclamationTriangleIcon className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground mb-2">Lease Not Found</h3>
+            <p className="text-muted-foreground">The requested lease could not be found.</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
-    <DashboardLayout title="Create Invoice">
-      <div className="max-w-5xl mx-auto p-6 space-y-8">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <input
-              className="text-3xl font-bold bg-transparent border-none outline-none text-muted-foreground placeholder-gray-400"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="Title (Optional)"
-            />
-          </div>
-          <div className="relative">
-            <button
-              className="flex items-center px-3 py-2 border border-white/20 rounded-md text-sm font-medium text-white bg-white/10 hover:bg-white/20"
-              onClick={() => setShowStatusDropdown(v => !v)}
-              type="button"
-            >
-              {STATUS_OPTIONS.find(opt => opt.value === status)?.icon && (
-                <span className={`mr-2 ${STATUS_OPTIONS.find(opt => opt.value === status)?.color}`}>
-                  {React.createElement(STATUS_OPTIONS.find(opt => opt.value === status)!.icon, { className: 'h-5 w-5' })}
-                </span>
-              )}
-              {STATUS_OPTIONS.find(opt => opt.value === status)?.label}
-              <ChevronDownIcon className="h-4 w-4 ml-2" />
-            </button>
-            {showStatusDropdown && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg z-10 border border-gray-200">
-                {STATUS_OPTIONS.map(opt => (
-                  <div
-                    key={opt.value}
-                    className={`flex items-center px-4 py-2 cursor-pointer hover:bg-muted ${status === opt.value ? 'bg-muted' : ''}`}
-                    onClick={() => { setStatus(opt.value); setShowStatusDropdown(false); }}
-                  >
-                    <span className={`mr-2 ${opt.color}`}>{React.createElement(opt.icon, { className: 'h-5 w-5' })}</span>
-                    {opt.label}
-                  </div>
-                ))}
-                <div className="border-t border-gray-200">
-                  <button className="flex items-center px-4 py-2 w-full text-xs text-blue-500 hover:bg-muted">
-                    <CogIcon className="h-4 w-4 mr-2" /> Set default state
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Invoice Info */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-white/10 border border-white/20 rounded-lg p-6">
-          <div>
-            <div className="text-muted-foreground/70 text-sm mb-1">Invoice #</div>
-            <input className="bg-transparent border-none outline-none text-blue-400 font-semibold" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} />
-          </div>
-          <div>
-            <div className="text-muted-foreground/70 text-sm mb-1">Issue Date</div>
-            <input type="date" className="bg-transparent border-none outline-none text-white" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
-          </div>
-          <div>
-            <div className="text-muted-foreground/70 text-sm mb-1">Due Date</div>
-            <input type="date" className="bg-transparent border-none outline-none text-white" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-          </div>
-        </div>
-
-        {/* From/To */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={fromDetails} onChange={e => setFromDetails(e.target.value)} placeholder="Your company details..." />
-          <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={toDetails} onChange={e => setToDetails(e.target.value)} placeholder="Client details..." />
-        </div>
-
-        {/* Line Items */}
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-white/10">
-            <thead>
-              <tr className="text-muted-foreground/70 text-sm">
-                <th className="px-4 py-2 text-left">Description</th>
-                <th className="px-4 py-2 text-left">Category</th>
-                <th className="px-4 py-2 text-center">Quantity</th>
-                <th className="px-4 py-2 text-right">Price</th>
-                <th className="px-4 py-2 text-right">Total</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {lineItems.map((item, idx) => (
-                <tr key={idx} className="bg-white/5">
-                  <td className="px-4 py-2">
-                    <input className="w-full bg-transparent border-none outline-none text-white" value={item.description} onChange={e => handleLineChange(idx, 'description', e.target.value)} placeholder="Item description" />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input className="w-full bg-transparent border-none outline-none text-white" value={item.category} onChange={e => handleLineChange(idx, 'category', e.target.value)} placeholder="Category" />
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    <div className="flex items-center justify-center space-x-2">
-                      <button onClick={() => handleLineChange(idx, 'quantity', Math.max(1, item.quantity - 1))} className="p-1"><MinusIcon className="h-4 w-4 text-muted-foreground/70" /></button>
-                      <input type="number" min={1} className="w-12 text-center bg-transparent border-none outline-none text-white" value={item.quantity} onChange={e => handleLineChange(idx, 'quantity', Math.max(1, Number(e.target.value)))} />
-                      <button onClick={() => handleLineChange(idx, 'quantity', item.quantity + 1)} className="p-1"><PlusIcon className="h-4 w-4 text-muted-foreground/70" /></button>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <input type="number" min={0} className="w-20 text-right bg-transparent border-none outline-none text-white" value={item.price} onChange={e => handleLineChange(idx, 'price', Number(e.target.value))} />
-                  </td>
-                  <td className="px-4 py-2 text-right">{formatCurrency(item.total)}</td>
-                  <td className="px-2 py-2 text-center">
-                    <button onClick={() => removeLine(idx)} className="text-red-400 hover:text-red-300"><MinusIcon className="h-4 w-4" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button onClick={addLine} className="mt-2 flex items-center text-blue-400 hover:text-blue-300 text-sm">
-            <PlusIcon className="h-4 w-4 mr-1" /> Add line
-          </button>
-        </div>
-
-        {/* Invoice Actions */}
-        <div className="flex flex-wrap gap-2 mt-2">
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Add payment</button>
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Add charge</button>
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Issue credit</button>
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Issue refund</button>
-          <button className="px-3 py-2 bg-blue-600 text-white rounded-md text-sm">Use deposit</button>
-        </div>
-
-        {/* Totals */}
-        <div className="flex flex-col items-end space-y-1">
-          <div className="flex items-center gap-8">
-            <div className="text-muted-foreground/70">Subtotal</div>
-            <div className="text-white font-semibold">${formatCurrency(subtotal)}</div>
-          </div>
-          <div className="flex items-center gap-8">
-            <div className="text-muted-foreground/70">Tax</div>
-            <div className="text-white font-semibold">{taxRate}% ${formatCurrency(tax)}</div>
-          </div>
-          <div className="flex items-center gap-8">
-            <div className="text-muted-foreground/70">Subtotal with Tax</div>
-            <div className="text-white font-semibold">${formatCurrency(subtotal + tax)}</div>
-          </div>
-          <div className="flex items-center gap-8 text-lg font-bold border-t border-white/20 pt-2 mt-2">
-            <div className="text-white">Total</div>
-            <div className="text-white">${formatCurrency(total)}</div>
-          </div>
-        </div>
-
-        {/* Notes and Delivery */}
-        <div className="bg-white/10 border border-white/20 rounded-lg p-4 space-y-4">
-          <div>
-            <label className="block text-muted-foreground/70 text-sm mb-1">Add a note to this invoice (optional)</label>
-            <textarea className="w-full bg-transparent border border-white/20 rounded-md p-2 text-white" value={notes} onChange={e => setNotes(e.target.value)} placeholder="No notes have been specified" />
-          </div>
-          <div>
-            <label className="block text-muted-foreground/70 text-sm mb-1">Deliver invoice to</label>
-            <div className="flex flex-col md:flex-row md:items-center gap-2">
-              <input className="flex-1 bg-transparent border border-white/20 rounded-md p-2 text-white" value={emailSubject} onChange={e => setEmailSubject(e.target.value)} placeholder="Email subject (optional)" />
-              <input className="flex-1 bg-transparent border border-white/20 rounded-md p-2 text-white" value={emailRecipient} onChange={e => setEmailRecipient(e.target.value)} placeholder="CC email" />
-            </div>
-          </div>
-        </div>
-
-        {/* Bank Info and Notes */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={bankInfo} onChange={e => setBankInfo(e.target.value)} placeholder="Bank Information" />
-          <textarea className="w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white min-h-[80px]" value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="Notes" />
-        </div>
-
-        {/* Success Message */}
-        {showSuccessMessage && (
-          <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 flex items-center gap-3">
-            <CheckCircleIcon className="h-6 w-6 text-green-400" />
-            <span className="text-green-300 font-medium">Invoice sent successfully! The invoice is now locked and cannot be edited.</span>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-white/20">
-          {/* Debug Info */}
-          <div className="text-xs text-white/50 mb-2">
-            Debug: createdInvoice = {createdInvoice ? 'exists' : 'null'}, isCreating = {isCreating.toString()}
-          </div>
-          
-          {/* Create Invoice Button */}
-          {!createdInvoice && (
-            <button
-              onClick={createInvoice}
-              disabled={isCreating}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white rounded-lg font-medium transition-colors"
-            >
-              {isCreating ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <CheckCircleIcon className="h-5 w-5" />
-                  Create Invoice
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Send Invoice Button */}
-          {createdInvoice && (
-            <div className="flex items-center gap-4">
-              {isInvoiceLocked() ? (
-                <button
-                  disabled
-                  className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-500 text-gray-300 rounded-lg font-medium cursor-not-allowed"
-                >
-                  <LockClosedIcon className="h-5 w-5" />
-                  Invoice Sent
-                </button>
-              ) : (
-                <button
-                  onClick={sendInvoice}
-                  disabled={isSending || !canSendInvoice()}
-                  className="flex items-center justify-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 text-white rounded-lg font-medium transition-colors"
-                >
-                  {isSending ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      <PaperAirplaneIcon className="h-5 w-5" />
-                      Send Invoice
-                    </>
-                  )}
-                </button>
-              )}
-
-              {/* Invoice Info */}
-              <div className="text-sm text-white/70">
-                <div>Invoice: {createdInvoice.invoice_number}</div>
-                <div>Status: <span className={`capitalize ${isInvoiceLocked() ? 'text-red-400' : 'text-green-400'}`}>
-                  {createdInvoice.status}
-                </span></div>
-              </div>
-            </div>
-          )}
-
-          {/* Test Button - Always Visible */}
-          <button
-            onClick={() => alert('Test button works!')}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
-          >
-            Test Button
-          </button>
-
-          {/* Back Button */}
-          <button
-            onClick={() => router.back()}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
-          >
-            Back to Lease
-          </button>
-        </div>
-      </div>
+    <DashboardLayout title="Invoice Management">
+      <EnhancedInvoiceDisplay 
+        lease={lease}
+        currentBillingMonth={currentBillingMonth}
+        generateInitialInvoice={generateInitialInvoice}
+        tenantCreditBalance={tenantCreditBalance}
+      />
     </DashboardLayout>
   );
-} 
+}
